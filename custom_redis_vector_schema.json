@@ -1,0 +1,29 @@
+{
+  "index": {
+    "name": "gdrive",
+    "prefix": "doc"
+  },
+  "fields": [
+    {
+      "type": "tag",
+      "name": "id"
+    },
+    {
+      "type": "tag",
+      "name": "doc_id"
+    },
+    {
+      "type": "text",
+      "name": "text"
+    },
+    {
+      "type": "vector",
+      "name": "vector",
+      "attrs": {
+        "dims": 128,
+        "algorithm": "hnsw",
+        "distance_metric": "cosine"
+      }
+    }
+  ]
+}
