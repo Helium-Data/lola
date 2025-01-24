@@ -95,7 +95,7 @@ async def load_from_dir(dir_id: str, dir_team: str):
     )
     dir_resources = reader.list_resources()
     dir_docs_resources = await asyncio.gather(
-        *[load_resource(reader, resource, dir_team) for resource in dir_resources[:3]])
+        *[load_resource(reader, resource, dir_team) for resource in dir_resources])
     dir_docs = {k: v for k, v in dir_docs_resources}
     return dir_docs
 
