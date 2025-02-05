@@ -17,10 +17,18 @@
       "name": "text"
     },
     {
+      "type": "tag",
+      "name": "doc_team"
+    },
+    {
+      "type": "tag",
+      "name": "file_name"
+    },
+    {
       "type": "vector",
       "name": "vector",
       "attrs": {
-        "dims": 128,
+        "dims": 768,
         "algorithm": "hnsw",
         "distance_metric": "cosine"
       }

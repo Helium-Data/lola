@@ -2,3 +2,6 @@
 /notebooks/.ipynb_checkpoints/
 /.env
 /credentials.json
+/token.json
+/storage/
+/notebooks/.ipynb_checkpoints/
