@@ -183,10 +183,10 @@ class LolaAgent(Workflow):
 
 def initialize_workflow() -> LolaAgent:
     print("Initializing workflow...")
-    print("Loading indices...")
-    indices = load_json_to_dict("drive_indices.json")
+    print("Loading indexes...")
+    indexes = load_json_to_dict("drive_indexes.json")
     tools = prepare_tools(
-        doc_indices=indices,
+        doc_indexes=indexes,
     )
 
     print("Calling agent...")
@@ -211,4 +211,11 @@ async def run_agent(text):
 
 
 if __name__ == '__main__':
-    asyncio.run(run_agent("Summarize the transport allowance policy?"))
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("query", help="Insert query",
+                        type=str)
+    args = parser.parse_args()
+    asyncio.run(run_agent(str(args.query)))
+#     "What are the eligibility criteria for transport allowance?"

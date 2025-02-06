@@ -12,6 +12,7 @@ from llama_index.storage.index_store.redis import RedisIndexStore
 from redisvl.schema import IndexSchema
 from llama_index.core.storage import StorageContext
 from llama_index.core import Settings
+from llama_index.core.ingestion import IngestionCache
 
 from opentelemetry.sdk import trace as trace_sdk
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
@@ -35,13 +36,18 @@ tracer_provider.add_span_processor(span_processor=span_phoenix_processor)
 LlamaIndexInstrumentor().instrument(tracer_provider=tracer_provider)
 
 
+# class contain configuration parameters for the application
 class Config:
-    REDIS_HOST = "localhost"
-    REDIS_PORT = 6379
+    REDIS_HOST = os.environ.get("REDIS_HOST")
+    REDIS_PORT = int(os.environ.get("REDIS_PORT"))
     REDIS = Redis.from_url(f"redis://{REDIS_HOST}:{REDIS_PORT}")
     LLM = Ollama(model="llama3.2", request_timeout=60.0)
     EMBED_MODEL = OllamaEmbedding(
         model_name="nomic-embed-text",
+    )
+    CACHE = IngestionCache(
+        cache=RedisCache.from_host_and_port(REDIS_HOST, REDIS_PORT),
+        collection="lola_redis_cache",
     )
     DOC_STORE = RedisDocumentStore.from_redis_client(
         REDIS, namespace="lola_document_store"

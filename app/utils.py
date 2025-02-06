@@ -11,29 +11,33 @@ from llama_index.core.vector_stores import (
     ExactMatchFilter,
     FilterCondition
 )
-from llama_index.core.tools import QueryEngineTool, ToolMetadata, FunctionTool, RetrieverTool
+from llama_index.core.tools import QueryEngineTool, FunctionTool, RetrieverTool, BaseTool
 
 import gspread
 from config import config
 
 
-def prepare_tools(doc_indices: Dict[str, str]) -> Any:
+def prepare_tools(doc_indexes: Dict[str, str]) -> List[BaseTool]:
+    """
+    Function to convert indexes to tools (vector, summary), also create new functions that the AI agent can reference to extract information.
+    :param doc_indexes: a dictionary containing existing vector and summary index ids.
+    :return: a list of tools for the LLM agent to use
+    """
     print("Preparing tools...")
     tools = []
-    glossary = load_glossary(config.GLOSSARY_DICT)
+    glossary = load_glossary(
+        config.GLOSSARY_DICT)  # load the glossary object that contains filename and description for a team's documents
 
+    # load indexes
     vector_index = VectorStoreIndex.from_vector_store(
         vector_store=config.VECTOR_STORE, embed_model=config.EMBED_MODEL
     )
     summary_index = load_index_from_storage(
-        config.STORAGE_CONTEXT, index_id=doc_indices["summary_index"]
-    )
-    keyword_table_index = load_index_from_storage(
-        config.STORAGE_CONTEXT, index_id=doc_indices["keyword_table_index"]
+        config.STORAGE_CONTEXT, index_id=doc_indexes["summary_index"]
     )
 
-    tools.append(QueryEngineTool.from_defaults(
-        query_engine=summary_index.as_query_engine(
+    tools.append(QueryEngineTool.from_defaults(  # convert query engine to a tool with name and description
+        query_engine=summary_index.as_query_engine(  # transform summary index into a query engine
             llm=config.LLM,
             response_mode="tree_summarize",
             use_async=False,
@@ -47,14 +51,6 @@ def prepare_tools(doc_indices: Dict[str, str]) -> Any:
         ),
     ))
 
-    # tools.append(RetrieverTool.from_defaults(
-    #     retriever=keyword_table_index.as_retriever(),
-    #     description=(
-    #         "Useful for retrieving specific context using keywords from"
-    #         " the documents."
-    #     ),
-    # ))
-
     def vector_search(query: str, filename: str = None) -> str:
         """
         Function useful for answering questions or queries related to a particular document.
@@ -65,22 +61,19 @@ def prepare_tools(doc_indices: Dict[str, str]) -> Any:
         """
         filters = None
         if filename:
-            filters_ = [ExactMatchFilter(key="file_name", value=filename)]
+            filters_ = [ExactMatchFilter(key="file_name", value=filename)]  # specify the filter type
             filters = MetadataFilters(
                 filters=filters_,
                 condition=FilterCondition.AND,
             )
 
-        query_engine = vector_index.as_query_engine(
+        query_engine = vector_index.as_query_engine(  # convert vector to query engine
             llm=config.LLM,
             similarity_top_k=3,
             filters=filters,
         )
 
-
         response = query_engine.query(query)
-        print("source: ", response.source_nodes)
-        print("response: ", response.response)
         return response.response
 
     def get_team_glossary(team: str = "HR") -> dict[str, str] | list[dict[str, Any]]:
@@ -113,7 +106,13 @@ def prepare_tools(doc_indices: Dict[str, str]) -> Any:
     return tools
 
 
-def get_glossary_sheet(sheet_key, worksheet: Union[int, str] = 0):
+def get_glossary_sheet(sheet_key, worksheet: Union[int, str] = 0) -> pd.DataFrame:
+    """
+    Function to convert google sheet to a pandas dataframe
+    :param sheet_key: the url to the Google spreadsheet
+    :param worksheet: name or index of the workbook
+    :return: a pandas dataframe
+    """
     gcloud = gspread.oauth(credentials_filename="credentials.json")
     sheet = gcloud.open_by_url(sheet_key)
     worksheet = sheet.get_worksheet(worksheet)
@@ -123,7 +122,12 @@ def get_glossary_sheet(sheet_key, worksheet: Union[int, str] = 0):
     )
 
 
-def load_glossary(glossary_dict: Dict[str, str]):
+def load_glossary(glossary_dict: Dict[str, str]) -> Dict[str, List[Dict[str, str]]]:
+    """
+    Convert extracted glossary spreadsheet into a python dictionary for easy lookup
+    :param glossary_dict: dictionary containing the team and location to team's glossary spreadsheet
+    :return:
+    """
     glossary = {}
     for team in glossary_dict.keys():
         glossary_df = get_glossary_sheet(
@@ -137,6 +141,11 @@ def load_glossary(glossary_dict: Dict[str, str]):
 
 
 def load_json_to_dict(file_path: str):
+    """
+    Load index JSON file into python dictionary
+    :param file_path: string path to json file
+    :return: dictionary containing index ids
+    """
     with open(file_path, 'r') as fp:
-        indices = json.load(fp)
-    return indices
+        indexes = json.load(fp)
+    return indexes
