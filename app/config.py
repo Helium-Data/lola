@@ -41,7 +41,7 @@ class Config:
     REDIS_HOST = os.environ.get("REDIS_HOST")
     REDIS_PORT = int(os.environ.get("REDIS_PORT"))
     REDIS = Redis.from_url(f"redis://{REDIS_HOST}:{REDIS_PORT}")
-    LLM = Ollama(model="llama3-groq-tool-use", request_timeout=60.0)
+    LLM = Ollama(model="llama3.1:8b", request_timeout=60.0)
     EMBED_MODEL = OllamaEmbedding(
         model_name="nomic-embed-text",
     )

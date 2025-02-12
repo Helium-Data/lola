@@ -174,35 +174,35 @@ class LolaIngestionPipeline:
             vector_index = VectorStoreIndex.from_vector_store(
                 vector_store=self.vector_store, embed_model=config.EMBED_MODEL
             )
-            keyword_table_index = load_index_from_storage(
-                storage_context=self.storage_context, index_id=index_ids["keyword_table_index"]
-            )
+            # keyword_table_index = load_index_from_storage(
+            #     storage_context=self.storage_context, index_id=index_ids["keyword_table_index"]
+            # )
 
             # delete docs from all indexes
             print("Deleting old docs")
             for doc in doc_nodes:
                 summary_index.delete(doc.id_)
                 vector_index.delete(doc.id_)
-                keyword_table_index.delete(doc.id_)
+                # keyword_table_index.delete(doc.id_)
 
             # insert new doc nodes
             print("Add new docs")
             summary_index.insert_nodes(doc_nodes)
             vector_index.insert_nodes(doc_nodes)
-            keyword_table_index.insert_nodes(doc_nodes)
+            # keyword_table_index.insert_nodes(doc_nodes)
         else:
             # Creating new indexes
             summary_index = SummaryIndex(nodes=doc_nodes, storage_context=self.storage_context)
 
-            keyword_table_index = SimpleKeywordTableIndex(
-                doc_nodes, storage_context=self.storage_context, llm=config.LLM
-            )
+            # keyword_table_index = SimpleKeywordTableIndex(
+            #     doc_nodes, storage_context=self.storage_context, llm=config.LLM
+            # )
 
         self.storage_context.persist()  # Persist indexes (save to file)  TODO: Check if necessary
         drive_indexes = {
             "summary_index": summary_index.index_id,
             "vector_index": vector_index.index_id,
-            "keyword_table_index": keyword_table_index.index_id,
+            # "keyword_table_index": keyword_table_index.index_id,
         }
 
         self.save_dict_to_json(drive_indexes, "drive_indexes.json")  # save index ids to json file
