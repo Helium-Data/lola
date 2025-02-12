@@ -118,8 +118,8 @@ class LolaIngestionPipeline:
         print(f"Loading from {dir_team}...")
         gfs = GDriveFileSystem(
             dir_id,
-            client_id="",
-            client_secret=""
+            client_id=config.G_CLIENT_ID,
+            client_secret=config.G_CLIENT_SECRET
         )  # initialize Google Drive file system with credentials
         dir_resources = None
         for root, dnames, fnames in gfs.walk(dir_id):  # walk through the directory and filter by extension type

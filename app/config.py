@@ -41,7 +41,7 @@ class Config:
     REDIS_HOST = os.environ.get("REDIS_HOST")
     REDIS_PORT = int(os.environ.get("REDIS_PORT"))
     REDIS = Redis.from_url(f"redis://{REDIS_HOST}:{REDIS_PORT}")
-    LLM = Ollama(model="llama3.2", request_timeout=60.0)
+    LLM = Ollama(model="llama3-groq-tool-use", request_timeout=60.0)
     EMBED_MODEL = OllamaEmbedding(
         model_name="nomic-embed-text",
     )
@@ -66,8 +66,8 @@ class Config:
     SLACK_BOT_TOKEN = os.environ.get("SLACK_BOT_TOKEN")
     SLACK_SIGNING_SECRET = os.environ.get("SLACK_SIGNING_SECRET")
     G_CREDENTIALS = dict(json.load(open("token.json", "r")))
-    G_CLIENT_ID = G_CREDENTIALS["client_id"]
-    G_CLIENT_SECRET = G_CREDENTIALS["client_secret"]
+    G_CLIENT_ID = os.environ.get("G_CLIENT_ID")
+    G_CLIENT_SECRET = os.environ.get("G_CLIENT_SECRET")
     GLOSSARY_DICT = {
         "HR": "https://docs.google.com/spreadsheets/d/1_sSt--3wTpUpJLfzQt3oiKQvw1DVNQ4M7i9xqpGVJmg/edit?gid=0#gid=0"
     }

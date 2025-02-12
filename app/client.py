@@ -1,50 +1,62 @@
+import asyncio
+import json
+import uvicorn
 from slack_bolt import App
-from flask import Flask, request, jsonify
+from flask import jsonify
+from fastapi import FastAPI, Request
+from slack_bolt.async_app import AsyncApp
 from slack_bolt.adapter.flask import SlackRequestHandler
+from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
 
 from config import config
 from lola_workflow import initialize_workflow
 
-app = App(
+app = AsyncApp(
     token=config.SLACK_BOT_TOKEN,
     signing_secret=config.SLACK_SIGNING_SECRET
 )
-handler = SlackRequestHandler(app)
+handler = AsyncSlackRequestHandler(app)
 
-flask_app = Flask(__name__)
+flask_app = FastAPI()
 
-# join the #bot-testing channel so we can listen to messages
-channel_list = app.client.conversations_list().data
-channel = next((channel for channel in channel_list.get('channels') if channel.get("name") == "bot-testing"), None)
-channel_id = channel.get('id')
-app.client.conversations_join(channel=channel_id)
-print(f"Found the channel {channel_id} and joined it")
 
-# get the bot's own user ID so it can tell when somebody is mentioning it
-auth_response = app.client.auth_test()
-bot_user_id = auth_response["user_id"]
+async def load_channel():
+    channel_list = await app.client.conversations_list()
+    channel_list = channel_list.data
+    print(channel_list)
+    channel = next(
+        (channel for channel in channel_list.get("channels") if channel.get("name") == "helium-data-research"), None)
+    channel_id = channel.get('id')
+    await app.client.conversations_join(channel=channel_id)
+    print(f"Found the channel {channel_id} and joined it")
 
+    # get the bot's own user ID so it can tell when somebody is mentioning it
+    auth_response = await app.client.auth_test()
+    bot_user_id_ = auth_response["user_id"]
+    return bot_user_id_
+
+
+#
 AGENT = initialize_workflow()
+bot_user_id = asyncio.run(load_channel())
 
 
 # this is the challenge route required by Slack
 # if it's not the challenge it's something for Bolt to handle
-@flask_app.route("/", methods=["POST"])
-def slack_challenge():
-    if request.json and "challenge" in request.json:
+@flask_app.post("/")
+async def slack_challenge(request: Request):
+    json_obj = await request.json()
+    if json_obj and "challenge" in json_obj:
         print("Received challenge")
-        return jsonify({"challenge": request.json["challenge"]})
+        return json.dumps({"challenge": json_obj["challenge"]})
     else:
         print("Incoming event:")
-        print(request.json)
-    return handler.handle(request)
+        print(json_obj)
+    return await handler.handle(request)
 
 
-# this handles any incoming message the bot can hear
-# we want it to only respond when somebody messages it directly
-# otherwise it listens and stores every message as future context
 @app.message()
-def reply(message, say):
+async def reply(message, say):
     if message.get('blocks'):
         for block in message.get('blocks'):
             if block.get('type') == 'rich_text':
@@ -55,16 +67,11 @@ def reply(message, say):
                                 if element.get('type') == 'text':
                                     query = element.get('text')
                                     print(f"Somebody asked the bot: {query}")
-                                    response = AGENT.run(input=query)
-                                    print("Context was:")
-                                    # print(response.source_nodes)
-                                    print(f"Response was: {response}")
-                                    say(str(response))
+                                    response = await AGENT.run(input=query)
+                                    await say(response["response"])
                                     return
-    # otherwise treat it as a document to store
-    # index.insert(Document(text=message.get('text')))
-    # print("Stored message", message.get('text'))
+    print("Saw a fact: ", message.get('text'))
 
 
 if __name__ == "__main__":
-    flask_app.run(port=3000)
+    uvicorn.run(port=3000, app=flask_app)
