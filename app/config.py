@@ -1,10 +1,10 @@
 import os
 import dotenv
 import json
+import boto3
 from redis import Redis
-from llama_index.llms.ollama import Ollama
-from llama_index.llms.lmstudio import LMStudio
-from llama_index.embeddings.ollama import OllamaEmbedding
+from llama_index.llms.bedrock_converse import BedrockConverse
+from llama_index.embeddings.bedrock import BedrockEmbedding
 from llama_index.storage.kvstore.redis import RedisKVStore as RedisCache
 from llama_index.storage.docstore.redis import RedisDocumentStore
 from llama_index.vector_stores.redis import RedisVectorStore
@@ -20,12 +20,13 @@ from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
     OTLPSpanExporter as HTTPSpanExporter,
 )
 from openinference.instrumentation.llama_index import LlamaIndexInstrumentor
+from openinference.instrumentation.bedrock import BedrockInstrumentor
 
 dotenv.load_dotenv()
 
 # Add Phoenix
 span_phoenix_processor = SimpleSpanProcessor(
-    HTTPSpanExporter(endpoint="http://localhost:6006//v1/traces")
+    HTTPSpanExporter(endpoint=os.environ.get("PHOENIX_ENDPOINT"))
 )
 
 # Add them to the tracer
@@ -34,6 +35,8 @@ tracer_provider.add_span_processor(span_processor=span_phoenix_processor)
 
 # Instrument the application
 LlamaIndexInstrumentor().instrument(tracer_provider=tracer_provider)
+# TODO: fix: "unable to track token usage on phoenix"
+# BedrockInstrumentor().instrument(tracer_provider=tracer_provider)
 
 
 # class contain configuration parameters for the application
@@ -41,9 +44,22 @@ class Config:
     REDIS_HOST = os.environ.get("REDIS_HOST")
     REDIS_PORT = int(os.environ.get("REDIS_PORT"))
     REDIS = Redis.from_url(f"redis://{REDIS_HOST}:{REDIS_PORT}")
-    LLM = Ollama(model="llama3.1:8b", request_timeout=60.0)
-    EMBED_MODEL = OllamaEmbedding(
-        model_name="nomic-embed-text",
+    BOTO_CLIENT = boto3.client(
+        "bedrock-runtime",
+        region_name=os.environ.get("AWS_REGION"),
+        aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID"),
+        aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY")
+
+    )
+    LLM = BedrockConverse(
+        model=os.environ.get("BEDROCK_LLM_MODEL_ID"),
+        client=BOTO_CLIENT,
+        region_name=os.environ.get("AWS_REGION"),
+    )
+    EMBED_MODEL = BedrockEmbedding(
+        model_name=os.environ.get("BEDROCK_EMBED_MODEL_ID"),
+        client=BOTO_CLIENT,
+        region_name=os.environ.get("AWS_REGION"),
     )
     CACHE = IngestionCache(
         cache=RedisCache.from_host_and_port(REDIS_HOST, REDIS_PORT),

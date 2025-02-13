@@ -1,5 +1,5 @@
 import asyncio
-from typing import Any, List, Union
+from typing import Any, List, Union, Dict
 import time
 
 from llama_index.core.llms import ChatMessage
@@ -71,8 +71,13 @@ class LolaAgent(Workflow):
 
     @step
     async def new_user_msg(self, ctx: Context, ev: StartEvent) -> PrepEvent:
-        # clear sources
+        # clear sources, reset existing memory
         self.sources = []
+        self.memory.reset()
+
+        conversation_history: List[Dict[str, str]] = ev.history or []
+        for hist in conversation_history:
+            self.memory.put(ChatMessage(role=hist["role"], content=hist["content"]))
 
         # get user input
         user_input = ev.input
