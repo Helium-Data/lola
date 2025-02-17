@@ -14,7 +14,7 @@ from llama_index.core.vector_stores import (
 from llama_index.core.tools import QueryEngineTool, FunctionTool, RetrieverTool, BaseTool
 
 import gspread
-from config import config
+from .config import config
 
 
 def prepare_tools(doc_indexes: Dict[str, str]) -> List[BaseTool]:
@@ -113,7 +113,20 @@ def get_glossary_sheet(sheet_key, worksheet: Union[int, str] = 0) -> pd.DataFram
     :param worksheet: name or index of the workbook
     :return: a pandas dataframe
     """
-    gcloud = gspread.oauth(credentials_filename="credentials.json")
+    credentials = {
+        "type": "service_account",
+        "project_id": config.G_PROJECT_ID,
+        "private_key_id": config.G_PRIVATE_KEY_ID,
+        "private_key": config.G_PRIVATE_KEY.replace(r"\n", "\n"),
+        "client_email": config.G_CLIENT_EMAIL,
+        "client_id": config.G_CLIENT_SERVICE_ID,
+        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+        "token_uri": "https://oauth2.googleapis.com/token",
+        "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+        "client_x509_cert_url": config.G_CLIENT_CERT_URI,
+        "universe_domain": "googleapis.com"
+    }
+    gcloud = gspread.service_account_from_dict(info=credentials)
     sheet = gcloud.open_by_url(sheet_key)
     worksheet = sheet.get_worksheet(worksheet)
     list_rows_worksheet = worksheet.get_all_values()

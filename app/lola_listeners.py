@@ -11,7 +11,7 @@ from slack_bolt.async_app import (
 )
 from slack_sdk.web.async_client import AsyncWebClient
 
-from lola_workflow import initialize_workflow
+from .lola_workflow import initialize_workflow
 
 
 class LolaSlackListener:
@@ -19,7 +19,7 @@ class LolaSlackListener:
         self.app = app
         self.assistant = assistant
 
-        self.bot_user_id = asyncio.run(self._get_bot_id())
+        # self.bot_user_id = asyncio.run(self._get_bot_id())
         self.agent = initialize_workflow()
 
     async def _get_bot_id(self):
@@ -41,8 +41,8 @@ class LolaSlackListener:
         await say(":wave: Hi, I'm Lola. How can I help you today?")
         await set_suggested_prompts(
             prompts=[
-                "What does SLACK stand for?",
-                "When Slack was released?",
+                "How can we protect against Intellectual Property theft?",
+                "How does an employee default on the transport allowance?",
             ]
         )
         return
@@ -71,6 +71,7 @@ class LolaSlackListener:
         channel = payload.get("channel", "")
 
         await set_title(query)
+        await set_status("Typing...")
         await set_status("Typing...")
 
         history = await client.conversations_replies(

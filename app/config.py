@@ -35,6 +35,8 @@ tracer_provider.add_span_processor(span_processor=span_phoenix_processor)
 
 # Instrument the application
 LlamaIndexInstrumentor().instrument(tracer_provider=tracer_provider)
+
+
 # TODO: fix: "unable to track token usage on phoenix"
 # BedrockInstrumentor().instrument(tracer_provider=tracer_provider)
 
@@ -81,9 +83,14 @@ class Config:
     )
     SLACK_BOT_TOKEN = os.environ.get("SLACK_BOT_TOKEN")
     SLACK_SIGNING_SECRET = os.environ.get("SLACK_SIGNING_SECRET")
-    G_CREDENTIALS = dict(json.load(open("token.json", "r")))
     G_CLIENT_ID = os.environ.get("G_CLIENT_ID")
     G_CLIENT_SECRET = os.environ.get("G_CLIENT_SECRET")
+    G_PROJECT_ID = os.environ.get("G_PROJECT_ID")
+    G_PRIVATE_KEY_ID = os.environ.get("G_PRIVATE_KEY_ID")
+    G_CLIENT_EMAIL = os.environ.get("G_CLIENT_EMAIL")
+    G_CLIENT_SERVICE_ID = os.environ.get("G_CLIENT_SERVICE_ID")
+    G_CLIENT_CERT_URI = os.environ.get("G_CLIENT_CERT_URI")
+    G_PRIVATE_KEY = os.environ.get("G_PRIVATE_KEY")
     GLOSSARY_DICT = {
         "HR": "https://docs.google.com/spreadsheets/d/1_sSt--3wTpUpJLfzQt3oiKQvw1DVNQ4M7i9xqpGVJmg/edit?gid=0#gid=0"
     }
