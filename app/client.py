@@ -5,8 +5,8 @@ from slack_bolt.async_app import AsyncApp, AsyncAssistant
 
 from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
 
-from config import config
-from lola_listeners import load_listeners
+from .config import config
+from .lola_listeners import load_listeners
 
 app = AsyncApp(
     token=config.SLACK_BOT_TOKEN,
