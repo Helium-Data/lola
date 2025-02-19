@@ -2,9 +2,9 @@ import os
 import dotenv
 import json
 import boto3
-from redis import Redis
 from llama_index.llms.bedrock_converse import BedrockConverse
 from llama_index.embeddings.bedrock import BedrockEmbedding
+from llama_index.embeddings.ollama import OllamaEmbedding
 from llama_index.storage.kvstore.redis import RedisKVStore as RedisCache
 from llama_index.storage.docstore.redis import RedisDocumentStore
 from llama_index.vector_stores.redis import RedisVectorStore
@@ -45,7 +45,7 @@ LlamaIndexInstrumentor().instrument(tracer_provider=tracer_provider)
 class Config:
     REDIS_HOST = os.environ.get("REDIS_HOST")
     REDIS_PORT = int(os.environ.get("REDIS_PORT"))
-    REDIS = Redis.from_url(f"redis://{REDIS_HOST}:{REDIS_PORT}")
+    REDIS_URL = f"redis://{REDIS_HOST}:{REDIS_PORT}"
     BOTO_CLIENT = boto3.client(
         "bedrock-runtime",
         region_name=os.environ.get("AWS_REGION"),
@@ -67,15 +67,15 @@ class Config:
         cache=RedisCache.from_host_and_port(REDIS_HOST, REDIS_PORT),
         collection="lola_redis_cache",
     )
-    DOC_STORE = RedisDocumentStore.from_redis_client(
-        REDIS, namespace="lola_document_store"
+    DOC_STORE = RedisDocumentStore.from_host_and_port(
+        host=REDIS_HOST, port=REDIS_PORT, namespace="lola_document_store"
     )
     VECTOR_STORE = RedisVectorStore(
         schema=IndexSchema.from_dict(dict(json.load(open("custom_redis_vector_schema.json", "r")))),
-        redis_client=REDIS,
+        redis_url=REDIS_URL,
     )
-    INDEX_STORE = RedisIndexStore.from_redis_client(
-        REDIS, namespace="lola_index"
+    INDEX_STORE = RedisIndexStore.from_host_and_port(
+        host=REDIS_HOST, port=REDIS_PORT, namespace="lola_index"
     )
     STORAGE_CONTEXT = StorageContext.from_defaults(
         index_store=INDEX_STORE,
