@@ -1,5 +1,5 @@
 import asyncio
-from typing import Any, List, Union
+from typing import Any, List, Union, Dict
 import time
 
 from llama_index.core.llms import ChatMessage
@@ -21,9 +21,9 @@ from llama_index.core.workflow import (
     step,
 )
 
-from utils import prepare_tools, load_json_to_dict
-from config import config
-from prompts import SYSTEM_PROMPT, SYSTEM_HEADER
+from .utils import prepare_tools, load_json_to_dict
+from .config import config
+from .prompts import SYSTEM_PROMPT, SYSTEM_HEADER
 
 
 class PrepEvent(Event):
@@ -71,8 +71,13 @@ class LolaAgent(Workflow):
 
     @step
     async def new_user_msg(self, ctx: Context, ev: StartEvent) -> PrepEvent:
-        # clear sources
+        # clear sources, reset existing memory
         self.sources = []
+        self.memory.reset()
+
+        conversation_history: List[Dict[str, str]] = ev.history or []
+        for hist in conversation_history:
+            self.memory.put(ChatMessage(role=hist["role"], content=hist["content"]))
 
         # get user input
         user_input = ev.input
@@ -183,10 +188,10 @@ class LolaAgent(Workflow):
 
 def initialize_workflow() -> LolaAgent:
     print("Initializing workflow...")
-    print("Loading indices...")
-    indices = load_json_to_dict("drive_indices.json")
+    print("Loading indexes...")
+    indexes = load_json_to_dict("drive_indexes.json")
     tools = prepare_tools(
-        doc_indices=indices,
+        doc_indexes=indexes,
     )
 
     print("Calling agent...")
@@ -211,4 +216,11 @@ async def run_agent(text):
 
 
 if __name__ == '__main__':
-    asyncio.run(run_agent("Summarize the transport allowance policy?"))
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("query", help="Insert query",
+                        type=str)
+    args = parser.parse_args()
+    asyncio.run(run_agent(str(args.query)))
+#     "What are the eligibility criteria for transport allowance?"
