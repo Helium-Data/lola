@@ -62,7 +62,7 @@ jobs:
           yes | argocd login ${{ vars.ARGOCD_STAGING_URL }} --username ${{ secrets.ARGOCD_USERNAME }} --password ${{ secrets.ARGOCD_PASSWORD }} --insecure
           argocd app actions run $APP_NAME restart --kind Deployment
      
-  slack-notify:
-    needs: [ build-and-deploy ]
-    uses: Helium-Health/.github/.github/workflows/slack-notification-global.yaml@main
-    secrets: inherit
+  # slack-notify:
+  #   needs: [ build-and-deploy ]
+  #   uses: Helium-Health/.github/.github/workflows/slack-notification-global.yaml@main
+  #   secrets: inherit
