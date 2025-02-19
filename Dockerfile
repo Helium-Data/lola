@@ -1,6 +1,12 @@
 # Use an official Python image as a base
 FROM python:3.12-slim
 
+# revisit using alpine base image to reduce image size
+# FROM python:3.13-alpine
+# FROM python:3.12-alpine
+# Install dependencies
+# RUN apk add --no-cache g++ gcc musl-dev libffi-dev openssl-dev
+
 # Set the working directory to /app
 WORKDIR /app
 
