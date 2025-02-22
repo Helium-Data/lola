@@ -21,9 +21,9 @@ from llama_index.core.workflow import (
     step,
 )
 
-from .utils import prepare_tools, load_json_to_dict
+from .utils import prepare_tools
 from .config import config
-from .prompts import SYSTEM_PROMPT, SYSTEM_HEADER
+from .prompts import SYSTEM_HEADER
 
 
 class PrepEvent(Event):
@@ -75,7 +75,7 @@ class LolaAgent(Workflow):
         self.sources = []
         self.memory.reset()
 
-        conversation_history: List[Dict[str, str]] = ev.history or []
+        conversation_history: List[Dict[str, str]] = ev.get("history", [])
         for hist in conversation_history:
             self.memory.put(ChatMessage(role=hist["role"], content=hist["content"]))
 
@@ -189,10 +189,7 @@ class LolaAgent(Workflow):
 def initialize_workflow() -> LolaAgent:
     print("Initializing workflow...")
     print("Loading indexes...")
-    indexes = load_json_to_dict("drive_indexes.json")
-    tools = prepare_tools(
-        doc_indexes=indexes,
-    )
+    tools = prepare_tools()
 
     print("Calling agent...")
     agent = LolaAgent(
