@@ -2,9 +2,8 @@ import json
 import pandas as pd
 from typing import Dict, List, Any, Union
 from llama_index.core import (
-    Response,
     VectorStoreIndex,
-    load_index_from_storage,
+    load_indices_from_storage,
 )
 from llama_index.core.vector_stores import (
     MetadataFilters,
@@ -17,10 +16,9 @@ import gspread
 from .config import config
 
 
-def prepare_tools(doc_indexes: Dict[str, str]) -> List[BaseTool]:
+def prepare_tools() -> List[BaseTool] | None:
     """
     Function to convert indexes to tools (vector, summary), also create new functions that the AI agent can reference to extract information.
-    :param doc_indexes: a dictionary containing existing vector and summary index ids.
     :return: a list of tools for the LLM agent to use
     """
     print("Preparing tools...")
@@ -32,49 +30,57 @@ def prepare_tools(doc_indexes: Dict[str, str]) -> List[BaseTool]:
     vector_index = VectorStoreIndex.from_vector_store(
         vector_store=config.VECTOR_STORE, embed_model=config.EMBED_MODEL
     )
-    summary_index = load_index_from_storage(
-        config.STORAGE_CONTEXT, index_id=doc_indexes["summary_index"]
+    indexes = load_indices_from_storage(
+        config.STORAGE_CONTEXT
     )
+    summary_index = indexes[1]
 
-    tools.append(QueryEngineTool.from_defaults(  # convert query engine to a tool with name and description
-        query_engine=summary_index.as_query_engine(  # transform summary index into a query engine
-            llm=config.LLM,
-            response_mode="tree_summarize",
-            use_async=False,
-        ),
-        name=f"summary_tool",
-        description=(
-            "Useful for any requests or questions that require a holistic summary "
-            "of EVERYTHING related to a document."
-            f" To answer questions about more specific sections"
-            f" of the document, please use vector_tool."
-        ),
-    ))
+    if indexes:
+        tools.append(QueryEngineTool.from_defaults(  # convert query engine to a tool with name and description
+            query_engine=summary_index.as_query_engine(  # transform summary index into a query engine
+                llm=config.LLM,
+                response_mode="tree_summarize",
+                use_async=False,
+            ),
+            name=f"summary_tool",
+            description=(
+                "Useful for any requests or questions that require a holistic summary "
+                "of EVERYTHING related to a document."
+                f" To answer questions about more specific sections"
+                f" of the document, please use vector_tool."
+            ),
+        ))
 
-    def vector_search(query: str, filename: str = None) -> str:
-        """
-        Function useful for answering questions or queries related to a particular document.
-        First get available documents from the 'get_team_glossary' tool before calling this tool.
-        :param query: (Required) the detailed query string to answer. str
-        :param filename: (Optional) the document filename to refine the query by.
-        :return: Response object with answer to the provided query.
-        """
-        filters = None
-        if filename:
-            filters_ = [ExactMatchFilter(key="file_name", value=filename)]  # specify the filter type
-            filters = MetadataFilters(
-                filters=filters_,
-                condition=FilterCondition.AND,
+        def vector_search(query: str, filename: str = None) -> str:
+            """
+            Function useful for answering questions or queries related to a particular document.
+            First get available documents from the 'get_team_glossary' tool before calling this tool.
+            :param query: (Required) the detailed query string to answer. str
+            :param filename: (Optional) the document filename to refine the query by.
+            :return: Response object with answer to the provided query.
+            """
+            filters = None
+            if filename:
+                filters_ = [ExactMatchFilter(key="file_name", value=filename)]  # specify the filter type
+                filters = MetadataFilters(
+                    filters=filters_,
+                    condition=FilterCondition.AND,
+                )
+
+            query_engine = vector_index.as_query_engine(  # convert vector to query engine
+                llm=config.LLM,
+                similarity_top_k=3,
+                filters=filters,
             )
 
-        query_engine = vector_index.as_query_engine(  # convert vector to query engine
-            llm=config.LLM,
-            similarity_top_k=3,
-            filters=filters,
-        )
+            response = query_engine.query(query)
+            return response.response
 
-        response = query_engine.query(query)
-        return response.response
+        tools.append(
+            FunctionTool.from_defaults(
+                fn=vector_search
+            )
+        )
 
     def get_team_glossary(team: str = "HR") -> dict[str, str] | list[dict[str, Any]]:
         """
@@ -90,12 +96,6 @@ def prepare_tools(doc_indexes: Dict[str, str]) -> List[BaseTool]:
             }
 
         return team_glossary
-
-    tools.append(
-        FunctionTool.from_defaults(
-            fn=vector_search
-        )
-    )
 
     tools.append(
         FunctionTool.from_defaults(
