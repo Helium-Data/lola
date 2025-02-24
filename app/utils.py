@@ -33,9 +33,10 @@ def prepare_tools() -> List[BaseTool] | None:
     indexes = load_indices_from_storage(
         config.STORAGE_CONTEXT
     )
-    summary_index = indexes[1]
 
     if indexes:
+        summary_index = indexes[1]
+
         tools.append(QueryEngineTool.from_defaults(  # convert query engine to a tool with name and description
             query_engine=summary_index.as_query_engine(  # transform summary index into a query engine
                 llm=config.LLM,
