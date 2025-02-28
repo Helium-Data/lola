@@ -94,9 +94,22 @@ class Config:
     GLOSSARY_DICT = {
         "HR": "https://docs.google.com/spreadsheets/d/1_sSt--3wTpUpJLfzQt3oiKQvw1DVNQ4M7i9xqpGVJmg/edit?gid=0#gid=0"
     }
-
-    Settings.llm = LLM
-    Settings.embed_model = EMBED_MODEL
+    G_CREDENTIALS = {
+        "type": "service_account",
+        "project_id": G_PROJECT_ID,
+        "private_key_id": G_PRIVATE_KEY_ID,
+        "private_key": G_PRIVATE_KEY.replace(r"\n", "\n"),
+        "client_email": G_CLIENT_EMAIL,
+        "client_id": G_CLIENT_SERVICE_ID,
+        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+        "token_uri": "https://oauth2.googleapis.com/token",
+        "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+        "client_x509_cert_url": G_CLIENT_CERT_URI,
+        "universe_domain": "googleapis.com"
+    }
 
 
 config = Config()
+
+Settings.llm = config.LLM
+Settings.embed_model = config.EMBED_MODEL

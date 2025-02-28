@@ -28,7 +28,7 @@
       "type": "vector",
       "name": "vector",
       "attrs": {
-        "dims": 768,
+        "dims": 1024,
         "algorithm": "hnsw",
         "distance_metric": "cosine"
       }

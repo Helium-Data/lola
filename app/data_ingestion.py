@@ -4,22 +4,27 @@ import asyncio
 import json
 import datetime
 import unicodedata
+from tqdm import tqdm
 from typing import Dict, List, Union, Tuple
 from llama_index.core.ingestion import (
     DocstoreStrategy,
     IngestionPipeline,
 )
+from pydrive2.auth import GoogleAuth
 from pydrive2.fs import GDriveFileSystem
-from llama_index.core import SimpleDirectoryReader
 from llama_index.core import (
     SummaryIndex,
     VectorStoreIndex,
     Document,
-    SimpleKeywordTableIndex,
-    load_index_from_storage
+    load_indices_from_storage,
+    SimpleDirectoryReader
 )
+from llama_index.core.extractors import (
+    SummaryExtractor,
+    QuestionsAnsweredExtractor,
+)
+from llama_index.core.schema import MetadataMode
 from llama_index.core.node_parser import SentenceSplitter
-from llama_index.core.node_parser import SemanticSplitterNodeParser
 from llama_index.readers.file import PDFReader, DocxReader
 
 from dotenv import load_dotenv
@@ -41,7 +46,13 @@ class LolaIngestionPipeline:
                 chunk_size=256,
                 chunk_overlap=10,
             ),
-            config.EMBED_MODEL
+            SummaryExtractor(summaries=["prev", "self", "next"], llm=config.LLM),
+            # extracts summaries, not only within the current text, but also within adjacent texts.
+            QuestionsAnsweredExtractor(
+                questions=3, llm=config.LLM, metadata_mode=MetadataMode.EMBED
+                # generates question/answer pairs from a piece of text
+            ),
+            config.EMBED_MODEL  # generate embedding vector for text chunk
         ],
         docstore=config.DOC_STORE,
         cache=config.CACHE,
@@ -108,7 +119,7 @@ class LolaIngestionPipeline:
             docs.append(doc)
         return resource, docs
 
-    async def load_from_dir(self, dir_id: str, dir_team: str) -> Dict[str, List[Document]]:
+    async def load_from_dir(self, dir_id: str, dir_team: str) -> Union[Dict[str, List[Document]], None]:
         """
         Load texts in all documents from a particular team.
         :param dir_id: the unique directory name to retrieve documents from
@@ -118,17 +129,23 @@ class LolaIngestionPipeline:
         print(f"Loading from {dir_team}...")
         gfs = GDriveFileSystem(
             dir_id,
+            client_json=json.dumps(config.G_CREDENTIALS),
             client_id=config.G_CLIENT_ID,
-            client_secret=config.G_CLIENT_SECRET
+            client_secret=config.G_CLIENT_SECRET,
+            use_service_account=True,
+            client_user_email=config.G_CLIENT_EMAIL
         )  # initialize Google Drive file system with credentials
         dir_resources = None
-        for root, dnames, fnames in gfs.walk(dir_id):  # walk through the directory and filter by extension type
+        for root, dnames, fnames in tqdm(gfs.walk(dir_id)):  # walk through the directory and filter by extension type
             dir_resources = [f"{dir_id}/{res}" for res in fnames if res.split('.')[-1] == "pdf"]
             break
 
+        if not dir_resources:
+            return None
+
         dir_docs_resources = await asyncio.gather(
             *[self.load_resource(gfs, resource, dir_team) for resource in
-              dir_resources])  # Run the "load_resource" asynchronously for each resource
+              dir_resources[:5]])  # Run the "load_resource" asynchronously for each resource
         dir_docs = {k: v for k, v in dir_docs_resources}
         return dir_docs
 
@@ -141,74 +158,75 @@ class LolaIngestionPipeline:
         drive_docs = {}
         for doc_dir in self.DOC_DIRS:
             dir_docs = await self.load_from_dir(self.DOC_DIRS[doc_dir], doc_dir)
-            drive_docs.update(dir_docs)
+            if dir_docs:
+                drive_docs.update(dir_docs)
         return drive_docs
 
     async def create_nodes(
-            self, drive_docs: Dict[str, List[Document]],
-            index_ids: Dict[str, str] = None
-    ) -> Union[Dict[str, str], None]:
+            self, drive_docs: Dict[str, List[Document]]
+    ) -> Union[Dict[str, Dict[str, str]], None]:
         """
         Method to generate nodes (chunks) and embeddings from all the extracted documents. i.e. Single document agent.
         :param drive_docs: a dictionary of filenames and list of processed documents.
-        :param index_ids: (Optional) a dictionary containing existing vector and summary index ids.
         :return:
         """
         print("Create nodes...")
-        all_docs = [do for doc in drive_docs.values() for do in doc]  # flatten dictionary to get all documents
-        vector_index = VectorStoreIndex.from_vector_store(vector_store=self.vector_store,
-                                                          embed_model=config.EMBED_MODEL)  # initialize vector database to store embedding and metadata
+        drive_indexes = {}
+        for filename, docs in tqdm(drive_docs.items()):
+            file_name = filename.replace(" ", "_").replace(".pdf", "")
+            file_name = file_name.split("/")[1]
+            doc_nodes = await self.PIPELINE.arun(
+                documents=docs)  # apply initialized transformation pipeline to list of documents
 
-        doc_nodes = self.PIPELINE.run(
-            documents=all_docs)  # apply initialized transformation pipeline to list of documents
+            if not doc_nodes:  # if no document has changed
+                continue
 
-        if not doc_nodes:  # if no document has changed
-            return None
+            try:
+                indexes = load_indices_from_storage(
+                    config.STORAGE_CONTEXT, index_ids=[
+                        f"{file_name}_summary_index",
+                        f"{file_name}_vector_index"
+                    ]
+                )
+            except ValueError:
+                indexes = None
 
-        if index_ids:
-            # load existing index
-            print("Loading indexes")
-            summary_index = load_index_from_storage(
-                storage_context=self.storage_context, index_id=index_ids["summary_index"]
-            )
-            vector_index = VectorStoreIndex.from_vector_store(
-                vector_store=self.vector_store, embed_model=config.EMBED_MODEL
-            )
-            # keyword_table_index = load_index_from_storage(
-            #     storage_context=self.storage_context, index_id=index_ids["keyword_table_index"]
-            # )
+            if indexes:
+                # load existing index
+                print("Loading indexes")
+                summary_index = indexes[0]
+                vector_index = indexes[1]
 
-            # delete docs from all indexes
-            print("Deleting old docs")
-            for doc in doc_nodes:
-                summary_index.delete(doc.id_)
-                vector_index.delete(doc.id_)
-                # keyword_table_index.delete(doc.id_)
+                # delete docs from all indexes
+                print("Deleting old docs")
+                for doc in doc_nodes:
+                    summary_index.delete(doc.id_)
+                    vector_index.delete(doc.id_)
 
-            # insert new doc nodes
-            print("Add new docs")
-            summary_index.insert_nodes(doc_nodes)
-            vector_index.insert_nodes(doc_nodes)
-            # keyword_table_index.insert_nodes(doc_nodes)
-        else:
-            # Creating new indexes
-            summary_index = SummaryIndex(nodes=doc_nodes, storage_context=self.storage_context)
+                # insert new doc nodes
+                print("Add new docs")
+                summary_index.insert_nodes(doc_nodes)
+                vector_index.insert_nodes(doc_nodes)
+            else:
+                # Creating new indexes
+                summary_index = SummaryIndex(
+                    nodes=doc_nodes, storage_context=self.storage_context
+                )
+                summary_index.set_index_id(f"{file_name}_summary_index")
+                vector_index = VectorStoreIndex(nodes=doc_nodes, storage_context=self.storage_context,
+                                                embed_model=config.EMBED_MODEL)
+                vector_index.set_index_id(f"{file_name}_vector_index")
 
-            # keyword_table_index = SimpleKeywordTableIndex(
-            #     doc_nodes, storage_context=self.storage_context, llm=config.LLM
-            # )
+                drive_indexes[filename] = {
+                    "summary_index": summary_index.index_id,
+                    "vector_index": vector_index.index_id,
+                }
 
         self.storage_context.persist()  # Persist indexes (save to file)  TODO: Check if necessary
-        drive_indexes = {
-            "summary_index": summary_index.index_id,
-            "vector_index": vector_index.index_id,
-            # "keyword_table_index": keyword_table_index.index_id,
-        }
-
         self.save_dict_to_json(drive_indexes, "drive_indexes.json")  # save index ids to json file
         return drive_indexes
 
-    def save_dict_to_json(self, indexes: Dict[str, str], file_path: str):
+    def save_dict_to_json(self, indexes: Dict[str, Dict[str, str]], file_path: str):
         """
         Helper method to save created index ids to json file.
         :param indexes: dictionary containing the created index ids
@@ -228,24 +246,23 @@ class LolaIngestionPipeline:
             indexes = json.load(fp)
         return indexes
 
-    async def run_ingestion(self, indexes_path: str) -> Dict[str, str]:
+    async def run_ingestion(self) -> Union[Dict[str, Dict[str, str]], None]:
         """
         Main function to run the ingestion pipeline.
-        :param indexes_path: path to the json file containing the created index ids
         :return: dictionary containing the created index ids
         """
         print("Running ingestor...")
-        indexes = None
-        if os.path.exists(indexes_path):  # check for existing index id file
-            indexes = self.load_json_to_dict(indexes_path)
 
         drive_docs = await self.load_from_drive()  # load data from drive
 
-        indexes = await self.create_nodes(drive_docs, indexes)  # create nodes from extracted documents
+        if not drive_docs:
+            return None
+
+        indexes = await self.create_nodes(drive_docs)  # create nodes from extracted documents
         return indexes
 
 
 if __name__ == '__main__':
     ingestor = LolaIngestionPipeline()
-    details = asyncio.run(ingestor.run_ingestion("drive_indexes.json"))
+    details = asyncio.run(ingestor.run_ingestion())
     print("Details: ", details)
