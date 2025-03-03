@@ -18,7 +18,7 @@ import gspread
 from .config import config
 
 
-async def prepare_tools() -> List[BaseTool] | None:
+def prepare_tools() -> List[BaseTool] | None:
     """
     Function to convert indexes to tools (vector, summary), also create new functions that the AI agent can reference to extract information.
     :return: a list of tools for the LLM agent to use
@@ -33,7 +33,7 @@ async def prepare_tools() -> List[BaseTool] | None:
 
     if indexes:
         # Build tools
-        agents, summary = await build_document_agents(indexes)
+        agents, summary = build_document_agents(indexes)
         obj_qe = build_agent_objects(agents)
         sub_qe = build_sub_question_qe(obj_qe)  # Optional: build sub question query engine
 
@@ -51,7 +51,7 @@ async def prepare_tools() -> List[BaseTool] | None:
     return tools
 
 
-async def build_document_agents(indices: List[BaseIndex]) -> Tuple[Dict[str, FunctionCallingAgent], str]:
+def build_document_agents(indices: List[BaseIndex]) -> Tuple[Dict[str, FunctionCallingAgent], str]:
     print("Building document agents...")
     summary_prompt = "Write one sentence about the contents of the document"
     agents = {}  # Build agents dictionary
@@ -62,7 +62,7 @@ async def build_document_agents(indices: List[BaseIndex]) -> Tuple[Dict[str, Fun
 
         if "summary_index" in index.index_id:
             sqe = index.as_query_engine(llm=config.LLM)
-            summary = await sqe.aquery(summary_prompt)
+            summary = sqe.query(summary_prompt)
             all_summary += f"Document: {fname}, Summary: {summary} \n"
 
             query_engine_tools.append(
@@ -119,7 +119,7 @@ async def build_document_agents(indices: List[BaseIndex]) -> Tuple[Dict[str, Fun
         agents[fname] = agent
 
     final_prompt = f"All Documents Summary: {all_summary} \nWrite one sentence about the documents and its contents."
-    final_summary = await config.LLM.acomplete(final_prompt)
+    final_summary = config.LLM.complete(final_prompt)
     return agents, str(final_summary)
 
 

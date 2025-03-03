@@ -186,10 +186,10 @@ class LolaAgent(Workflow):
         return PrepEvent()
 
 
-async def initialize_workflow() -> LolaAgent:
+def initialize_workflow() -> LolaAgent:
     print("Initializing workflow...")
     print("Loading indexes...")
-    tools = await prepare_tools()
+    tools = prepare_tools()
 
     print("Calling agent...")
     agent = LolaAgent(
@@ -199,7 +199,7 @@ async def initialize_workflow() -> LolaAgent:
 
 
 async def run_agent(text):
-    agent = await initialize_workflow()
+    agent = initialize_workflow()
 
     start_time = time.time()
     print(f"Running agent at: {start_time}")
