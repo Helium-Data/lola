@@ -70,8 +70,9 @@ class Config:
     DOC_STORE = RedisDocumentStore.from_host_and_port(
         host=REDIS_HOST, port=REDIS_PORT, namespace="lola_document_store"
     )
+    VECTOR_INDEX_SCHEMA = dict(json.load(open("custom_redis_vector_schema.json", "r")))
     VECTOR_STORE = RedisVectorStore(
-        schema=IndexSchema.from_dict(dict(json.load(open("custom_redis_vector_schema.json", "r")))),
+        schema=IndexSchema.from_dict(VECTOR_INDEX_SCHEMA),
         redis_url=REDIS_URL,
     )
     INDEX_STORE = RedisIndexStore.from_host_and_port(

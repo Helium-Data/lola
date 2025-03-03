@@ -25,6 +25,10 @@
       "name": "file_name"
     },
     {
+      "type": "tag",
+      "name": "tag_name"
+    },
+    {
       "type": "vector",
       "name": "vector",
       "attrs": {

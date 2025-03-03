@@ -1,29 +1,28 @@
-import os
 import re
 import asyncio
 import json
 import datetime
 import unicodedata
 from tqdm import tqdm
-from typing import Dict, List, Union, Tuple
+from typing import Dict, List, Union, Tuple, Sequence
 from llama_index.core.ingestion import (
     DocstoreStrategy,
     IngestionPipeline,
 )
-from pydrive2.auth import GoogleAuth
 from pydrive2.fs import GDriveFileSystem
 from llama_index.core import (
     SummaryIndex,
     VectorStoreIndex,
     Document,
     load_indices_from_storage,
+    StorageContext,
     SimpleDirectoryReader
 )
 from llama_index.core.extractors import (
     SummaryExtractor,
     QuestionsAnsweredExtractor,
 )
-from llama_index.core.schema import MetadataMode
+from llama_index.core.schema import BaseNode
 from llama_index.core.node_parser import SentenceSplitter
 from llama_index.readers.file import PDFReader, DocxReader
 
@@ -40,20 +39,21 @@ class LolaIngestionPipeline:
         # "IT": ""
     }
     RESET_INDEX = False
+    TRANSFORMATIONS = [
+        SentenceSplitter(
+            chunk_size=256,
+            chunk_overlap=10,
+        ),
+        config.EMBED_MODEL,  # generate embedding vector for text chunk
+        SummaryExtractor(summaries=["prev", "self", "next"], llm=config.LLM),
+        # extracts summaries, not only within the current text, but also within adjacent texts.
+        QuestionsAnsweredExtractor(
+            questions=3, llm=config.LLM
+            # generates question/answer pairs from a piece of text
+        ),
+    ]
     PIPELINE = IngestionPipeline(
-        transformations=[
-            SentenceSplitter(
-                chunk_size=256,
-                chunk_overlap=10,
-            ),
-            SummaryExtractor(summaries=["prev", "self", "next"], llm=config.LLM),
-            # extracts summaries, not only within the current text, but also within adjacent texts.
-            QuestionsAnsweredExtractor(
-                questions=3, llm=config.LLM, metadata_mode=MetadataMode.EMBED
-                # generates question/answer pairs from a piece of text
-            ),
-            config.EMBED_MODEL  # generate embedding vector for text chunk
-        ],
+        transformations=TRANSFORMATIONS,
         docstore=config.DOC_STORE,
         cache=config.CACHE,
         docstore_strategy=DocstoreStrategy.UPSERTS,
@@ -145,7 +145,7 @@ class LolaIngestionPipeline:
 
         dir_docs_resources = await asyncio.gather(
             *[self.load_resource(gfs, resource, dir_team) for resource in
-              dir_resources[:5]])  # Run the "load_resource" asynchronously for each resource
+              dir_resources])  # Run the "load_resource" asynchronously for each resource
         dir_docs = {k: v for k, v in dir_docs_resources}
         return dir_docs
 
@@ -175,7 +175,11 @@ class LolaIngestionPipeline:
         for filename, docs in tqdm(drive_docs.items()):
             file_name = filename.replace(" ", "_").replace(".pdf", "")
             file_name = file_name.split("/")[1]
-            doc_nodes = await self.PIPELINE.arun(
+
+            for doc in docs:
+                doc.metadata["tag_name"] = file_name
+
+            doc_nodes: Sequence[BaseNode] = await self.PIPELINE.arun(
                 documents=docs)  # apply initialized transformation pipeline to list of documents
 
             if not doc_nodes:  # if no document has changed
@@ -208,18 +212,15 @@ class LolaIngestionPipeline:
                 summary_index.insert_nodes(doc_nodes)
                 vector_index.insert_nodes(doc_nodes)
             else:
+                print(f"Doc nodes: {doc_nodes[0]}")
                 # Creating new indexes
                 summary_index = SummaryIndex(
                     nodes=doc_nodes, storage_context=self.storage_context
                 )
                 summary_index.set_index_id(f"{file_name}_summary_index")
-                vector_index = VectorStoreIndex(nodes=doc_nodes, storage_context=self.storage_context,
-                                                embed_model=config.EMBED_MODEL)
-                vector_index.set_index_id(f"{file_name}_vector_index")
 
-                drive_indexes[filename] = {
+                drive_indexes[file_name] = {
                     "summary_index": summary_index.index_id,
-                    "vector_index": vector_index.index_id,
                 }
 
         self.storage_context.persist()  # Persist indexes (save to file)  TODO: Check if necessary

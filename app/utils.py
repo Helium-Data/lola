@@ -1,6 +1,7 @@
 import json
 import pandas as pd
-from typing import Dict, List, Any, Union
+from tqdm import tqdm
+from typing import Dict, List, Union, Tuple
 from llama_index.core import (
     VectorStoreIndex,
     load_indices_from_storage,
@@ -8,14 +9,16 @@ from llama_index.core import (
 from llama_index.core.schema import IndexNode
 from llama_index.core.agent import FunctionCallingAgent
 from llama_index.core.indices.base import BaseIndex
-from llama_index.core.query_engine import SubQuestionQueryEngine
+from llama_index.core.query_engine import SubQuestionQueryEngine, RetrieverQueryEngine
 from llama_index.core.tools import QueryEngineTool, ToolMetadata, BaseTool
+from llama_index.core.indices.vector_store.retrievers.retriever import VectorIndexRetriever
+from llama_index.core.vector_stores import ExactMatchFilter, FilterCondition, MetadataFilters
 
 import gspread
-from .config import config
+from config import config
 
 
-def prepare_tools() -> List[BaseTool] | None:
+async def prepare_tools() -> List[BaseTool] | None:
     """
     Function to convert indexes to tools (vector, summary), also create new functions that the AI agent can reference to extract information.
     :return: a list of tools for the LLM agent to use
@@ -30,7 +33,7 @@ def prepare_tools() -> List[BaseTool] | None:
 
     if indexes:
         # Build tools
-        agents = build_document_agents(indexes)
+        agents, summary = await build_document_agents(indexes)
         obj_qe = build_agent_objects(agents)
         sub_qe = build_sub_question_qe(obj_qe)  # Optional: build sub question query engine
 
@@ -39,7 +42,8 @@ def prepare_tools() -> List[BaseTool] | None:
                 query_engine=sub_qe,
                 metadata=ToolMetadata(
                     name="sub_query_engine",
-                    description="Useful for getting context on different company policy documents.",
+                    description=f"Useful for getting context on different company policy documents. "
+                                f"Summary of documents: {summary}",
                 ),
             )
         )
@@ -47,18 +51,19 @@ def prepare_tools() -> List[BaseTool] | None:
     return tools
 
 
-def build_document_agents(indices: List[BaseIndex]) -> Dict[str, FunctionCallingAgent]:
+async def build_document_agents(indices: List[BaseIndex]) -> Tuple[Dict[str, FunctionCallingAgent], str]:
     print("Building document agents...")
-    summary_prompt = "Write a one sentence summary about the document"
+    summary_prompt = "Write one sentence about the contents of the document"
     agents = {}  # Build agents dictionary
-    for index in indices:
+    all_summary = ""
+    for index in tqdm(indices):
         fname = "_".join(index.index_id.split("_")[:-2])
         query_engine_tools = []
 
         if "summary_index" in index.index_id:
-            sqe = index.as_query_engine()
-
-            summary = sqe.query(summary_prompt)
+            sqe = index.as_query_engine(llm=config.LLM)
+            summary = await sqe.aquery(summary_prompt)
+            all_summary += f"Document: {fname}, Summary: {summary} \n"
 
             query_engine_tools.append(
                 QueryEngineTool(
@@ -73,13 +78,27 @@ def build_document_agents(indices: List[BaseIndex]) -> Dict[str, FunctionCalling
                 )
             )
 
-        if "vector_index" in index.index_id:
-            vqe = index.as_query_engine()
-            summary = vqe.query(summary_prompt)
+            # Get query engine for single document
+            vector_index = VectorStoreIndex.from_vector_store(
+                vector_store=config.VECTOR_STORE, embed_model=config.EMBED_MODEL
+            )
+            filters_ = [ExactMatchFilter(key="tag_name", value=fname)]  # specify the filter type
+            filters = MetadataFilters(
+                filters=filters_,
+                condition=FilterCondition.AND,
+            )
+            retriever = VectorIndexRetriever(
+                index=vector_index,
+                similarity_top_k=3,
+                filters=filters
+            )
+            rqe = RetrieverQueryEngine(
+                retriever=retriever
+            )
 
             query_engine_tools.append(
                 QueryEngineTool(
-                    query_engine=vqe,
+                    query_engine=rqe,
                     metadata=ToolMetadata(
                         name=f"{fname}_vector_tool",
                         description=(
@@ -99,7 +118,9 @@ def build_document_agents(indices: List[BaseIndex]) -> Dict[str, FunctionCalling
 
         agents[fname] = agent
 
-    return agents
+    final_prompt = f"All Documents Summary: {all_summary} \nWrite one sentence about the documents and its contents."
+    final_summary = await config.LLM.acomplete(final_prompt)
+    return agents, str(final_summary)
 
 
 def build_agent_objects(agents_dict: Dict[str, FunctionCallingAgent]):
