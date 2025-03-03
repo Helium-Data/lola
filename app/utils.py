@@ -39,13 +39,9 @@ def prepare_tools() -> List[BaseTool] | None:
     )
     print(f"{len(indices)}: {[ind.index_id for ind in indices]}")
 
-    r = redis.Redis(
-        host=config.REDIS_HOST, port=config.REDIS_PORT
+    vector_index = VectorStoreIndex.from_documents(
+        documents=config.DOC_STORE.docs
     )
-    vector_store = RedisVectorStore(
-        redis_client=r, overwrite=True
-    )
-    vector_index = VectorStoreIndex.from_vector_store(vector_store=vector_store)
     vqe = vector_index.as_query_engine(llm=config.LLM)
     print(f"Vector id: {vector_index.index_id}: {vqe.query("Works")}")
 
