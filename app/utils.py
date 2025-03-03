@@ -30,11 +30,12 @@ def prepare_tools() -> List[BaseTool] | None:
     tools = []
 
     # load indices
+    print(f"Indexes: {config.INDEX_STORE.index_structs()}")
     indexes = config.INDEX_STORE.index_structs()
     print(f"{len(indexes)}: {[ind.index_id for ind in indexes]}")
     print(
-        f"Redis debug: {config.REDIS_URL}, {config.VECTOR_STORE}, {config.INDEX_STORE}, {config.DOC_STORE}, {config.STORAGE_CONTEXT}")
-    print(f"Redis Schema: {config.VECTOR_INDEX_SCHEMA}")
+        f"Redis debug: {config.REDIS_URL}, {config.VECTOR_STORE}, {config.DOC_STORE}, {config.STORAGE_CONTEXT}")
+    print(f"Redis Schema: {config.VECTOR_STORE.schema}")
     vector_index = VectorStoreIndex.from_vector_store(
         vector_store=config.VECTOR_STORE, embed_model=config.EMBED_MODEL
     )
