@@ -11,6 +11,7 @@ from llama_index.core import (
     load_indices_from_storage,
     SummaryIndex
 )
+from pydantic import ValidationError
 from llama_index.core.schema import IndexNode
 from llama_index.core.agent import FunctionCallingAgent
 from llama_index.core.indices.base import BaseIndex
@@ -42,16 +43,13 @@ def prepare_tools() -> List[BaseTool] | None:
         f"Redis debug: {config.REDIS_URL}, {config.VECTOR_STORE}, {config.DOC_STORE}, {config.STORAGE_CONTEXT}")
     print(f"Redis Schema: {config.VECTOR_STORE.schema}")
     vector_index = VectorStoreIndex.from_vector_store(
-        vector_store=RedisVectorStore(
-            schema=IndexSchema.from_dict(config.VECTOR_INDEX_SCHEMA),
-            redis_url=config.REDIS_URL,
-        ), embed_model=config.EMBED_MODEL
+        vector_store=config.VECTOR_STORE, embed_model=config.EMBED_MODEL
     )
     print(f"Vector id: {vector_index.index_id}: {vector_index.as_query_engine(llm=config.LLM).query("Works")}")
 
-    if indexes:
+    if indices:
         # Build tools
-        agents, summary = build_document_agents(indexes)
+        agents, summary = build_document_agents(indices)
         obj_qe = build_agent_objects(agents)
         sub_qe = build_sub_question_qe(obj_qe)  # Optional: build sub question query engine
 
@@ -69,7 +67,7 @@ def prepare_tools() -> List[BaseTool] | None:
     return tools
 
 
-def build_document_agents(indices: List[IndexStruct]) -> Tuple[Dict[str, FunctionCallingAgent], str]:
+def build_document_agents(indices: List[BaseIndex]) -> Tuple[Dict[str, FunctionCallingAgent], str]:
     print("Building document agents...")
     summary_prompt = "Write one sentence about the contents of the document"
     agents = {}  # Build agents dictionary
@@ -80,12 +78,8 @@ def build_document_agents(indices: List[IndexStruct]) -> Tuple[Dict[str, Functio
 
         if "summary_index" in index.index_id:
             print(f"index_id: {index.index_id}")
-            summary_index = load_index_from_storage(
-                storage_context=config.STORAGE_CONTEXT,
-                index_id=index.index_id
-            )
-            sqe = summary_index.as_query_engine(llm=config.LLM)
-            summary = sqe.query(summary_prompt)
+            sqe = index.as_query_engine(llm=config.LLM)
+            summary = self_retry(sqe.query, summary_prompt)
             all_summary += f"Document: {fname}, Summary: {summary} \n"
 
             query_engine_tools.append(
@@ -142,7 +136,7 @@ def build_document_agents(indices: List[IndexStruct]) -> Tuple[Dict[str, Functio
         agents[fname] = agent
 
     final_prompt = f"All Documents Summary: {all_summary} \nWrite one sentence about the documents and its contents."
-    final_summary = config.LLM.complete(final_prompt)
+    final_summary = self_retry(config.LLM.complete, final_prompt)
     return agents, str(final_summary)
 
 
@@ -231,3 +225,22 @@ def load_json_to_dict(file_path: str):
     with open(file_path, 'r') as fp:
         indexes = json.load(fp)
     return indexes
+
+def self_retry(func, *args, n_retries=5):
+    """
+    Invoke the model 'n_loops' times to ensure we get a valid response from the model.
+    :param func: the function generating the response
+    :param n_retries: maximum number of retries
+    :param args: extra parameters for the 'func' method
+    :return:
+    """
+    for _ in range(n_retries):
+        try:
+            response = func(*args)
+            if response:
+                return response
+        except ValidationError as e:
+            print(f"Validation error: {e}")
+        except Exception as e:
+            print(f"Other error: {e}")
+    return None
