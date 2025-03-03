@@ -1,11 +1,13 @@
 import json
 import pandas as pd
+from llama_index.core.data_structs import IndexList
+from llama_index.core.data_structs.data_structs import IndexStruct
 from tqdm import tqdm
 from typing import Dict, List, Union, Tuple
 from llama_index.core import (
     VectorStoreIndex,
-    load_indices_from_storage,
-    StorageContext
+    load_index_from_storage,
+    SummaryIndex
 )
 from llama_index.core.schema import IndexNode
 from llama_index.core.agent import FunctionCallingAgent
@@ -28,11 +30,7 @@ def prepare_tools() -> List[BaseTool] | None:
     tools = []
 
     # load indices
-    indexes = load_indices_from_storage(
-        storage_context=StorageContext.from_defaults(
-            index_store=config.INDEX_STORE
-        )
-    )
+    indexes = config.INDEX_STORE.index_structs()
     print(f"{len(indexes)}: {[ind.index_id for ind in indexes]}")
     print(
         f"Redis debug: {config.REDIS_URL}, {config.VECTOR_STORE}, {config.INDEX_STORE}, {config.DOC_STORE}, {config.STORAGE_CONTEXT}")
@@ -63,7 +61,7 @@ def prepare_tools() -> List[BaseTool] | None:
     return tools
 
 
-def build_document_agents(indices: List[BaseIndex]) -> Tuple[Dict[str, FunctionCallingAgent], str]:
+def build_document_agents(indices: List[IndexStruct]) -> Tuple[Dict[str, FunctionCallingAgent], str]:
     print("Building document agents...")
     summary_prompt = "Write one sentence about the contents of the document"
     agents = {}  # Build agents dictionary
@@ -73,7 +71,11 @@ def build_document_agents(indices: List[BaseIndex]) -> Tuple[Dict[str, FunctionC
         query_engine_tools = []
 
         if "summary_index" in index.index_id:
-            sqe = index.as_query_engine(llm=config.LLM)
+            summary_index = load_index_from_storage(
+                storage_context=config.STORAGE_CONTEXT,
+                index_id=index.index_id
+            )
+            sqe = summary_index.as_query_engine(llm=config.LLM)
             summary = sqe.query(summary_prompt)
             all_summary += f"Document: {fname}, Summary: {summary} \n"
 
