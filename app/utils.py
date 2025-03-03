@@ -1,6 +1,7 @@
 import json
 import asyncio
 import pandas as pd
+import nest_asyncio
 from llama_index.vector_stores.redis import RedisVectorStore
 from redisvl.schema import IndexSchema
 from llama_index.core.data_structs.data_structs import IndexStruct
@@ -24,6 +25,8 @@ from llama_index.core.vector_stores import ExactMatchFilter, FilterCondition, Me
 import gspread
 from .config import config
 from .data_ingestion import LolaIngestionPipeline
+
+nest_asyncio.apply()
 
 
 def prepare_tools() -> List[BaseTool] | None:
