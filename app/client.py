@@ -1,3 +1,4 @@
+import asyncio
 import json
 import uvicorn
 from fastapi import FastAPI, Request
@@ -14,7 +15,7 @@ app = AsyncApp(
     signing_secret=config.SLACK_SIGNING_SECRET
 )
 assistant = AsyncAssistant()
-agent = initialize_workflow()
+agent = asyncio.run(initialize_workflow())
 load_listeners(app, assistant=assistant, agent=agent)
 
 app.use(assistant)
