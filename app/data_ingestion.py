@@ -66,8 +66,8 @@ class LolaIngestionPipeline:
         self.file_extractor = {".pdf": PDFReader(), ".docx": DocxReader()}
         self.storage_context = config.STORAGE_CONTEXT
 
-        if self.RESET_INDEX:  # Manually reset all the data from the vector index
-            asyncio.run(self.reset_indexes())
+        # if self.RESET_INDEX:  # Manually reset all the data from the vector index
+        #     asyncio.run(self.reset_indexes())
 
     async def reset_indexes(self):
         """
