@@ -5,6 +5,7 @@ from typing import Dict, List, Union, Tuple
 from llama_index.core import (
     VectorStoreIndex,
     load_indices_from_storage,
+    StorageContext
 )
 from llama_index.core.schema import IndexNode
 from llama_index.core.agent import FunctionCallingAgent
@@ -28,18 +29,19 @@ def prepare_tools() -> List[BaseTool] | None:
 
     # load indices
     indexes = load_indices_from_storage(
-        config.STORAGE_CONTEXT
+        storage_context=StorageContext.from_defaults(
+            index_store=config.INDEX_STORE
+        )
     )
-    print(f"Redis debug: {config.REDIS_URL}, {config.VECTOR_STORE}, {config.INDEX_STORE.index_structs()}, {config.DOC_STORE}, {config.STORAGE_CONTEXT}")
+    print(f"{len(indexes)}: {[ind.index_id for ind in indexes]}")
+    print(
+        f"Redis debug: {config.REDIS_URL}, {config.VECTOR_STORE}, {config.INDEX_STORE}, {config.DOC_STORE}, {config.STORAGE_CONTEXT}")
     print(f"Redis Schema: {config.VECTOR_INDEX_SCHEMA}")
-    redis_query = "FT.INFO 'gdrive'"
-    print(f"Vector info: {config.VECTOR_STORE.query(redis_query)}")
     vector_index = VectorStoreIndex.from_vector_store(
         vector_store=config.VECTOR_STORE, embed_model=config.EMBED_MODEL
     )
     print(f"Vector id: {vector_index.index_id}")
     print(vector_index.as_query_engine().query("Works"))
-    print(f"{len(indexes)}: {[ind.index_id for ind in indexes]}")
 
     if indexes:
         # Build tools
