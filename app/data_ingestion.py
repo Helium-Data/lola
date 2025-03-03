@@ -14,7 +14,7 @@ from llama_index.core import (
     SummaryIndex,
     VectorStoreIndex,
     Document,
-    load_indices_from_storage,
+    load_index_from_storage,
     StorageContext,
     SimpleDirectoryReader
 )
@@ -186,31 +186,25 @@ class LolaIngestionPipeline:
                 continue
 
             try:
-                indexes = load_indices_from_storage(
-                    config.STORAGE_CONTEXT, index_ids=[
-                        f"{file_name}_summary_index",
-                        f"{file_name}_vector_index"
-                    ]
+                index = load_index_from_storage(
+                    config.STORAGE_CONTEXT, index_id=f"{file_name}_summary_index"
                 )
             except ValueError:
-                indexes = None
+                index = None
 
-            if indexes:
+            if index:
                 # load existing index
                 print("Loading indexes")
-                summary_index = indexes[0]
-                vector_index = indexes[1]
+                summary_index = index
 
                 # delete docs from all indexes
                 print("Deleting old docs")
                 for doc in doc_nodes:
                     summary_index.delete(doc.id_)
-                    vector_index.delete(doc.id_)
 
                 # insert new doc nodes
                 print("Add new docs")
                 summary_index.insert_nodes(doc_nodes)
-                vector_index.insert_nodes(doc_nodes)
             else:
                 print(f"Doc nodes: {doc_nodes[0]}")
                 # Creating new indexes
