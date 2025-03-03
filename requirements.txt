@@ -9,6 +9,7 @@ aiosqlite==0.21.0
 alembic==1.14.1
 annotated-types==0.7.0
 anyio==4.8.0
+appdirs==1.4.4
 arize-phoenix==7.12.2
 arize-phoenix-evals==0.20.3
 arize-phoenix-otel==0.7.1
@@ -28,11 +29,13 @@ dacite==1.9.2
 dataclasses-json==0.6.7
 Deprecated==1.2.18
 dirtyjson==1.0.8
+diskcache==5.6.3
 distro==1.9.0
 fastapi==0.115.8
 filetype==1.2.0
 frozenlist==1.5.0
 fsspec==2025.2.0
+funcy==2.0
 future==1.0.0
 gkeepapi==0.15.1
 google-api-core==2.24.1
@@ -47,6 +50,7 @@ greenlet==3.1.1
 grpc-interceptor==0.15.4
 grpcio==1.70.0
 gspread==6.1.4
+guidance==0.1.16
 h11==0.14.0
 httpcore==1.0.7
 httplib2==0.22.0
@@ -72,7 +76,9 @@ llama-index-indices-managed-llama-cloud==0.6.6
 llama-index-llms-bedrock-converse==0.4.5
 llama-index-llms-openai==0.3.20
 llama-index-multi-modal-llms-openai==0.4.3
+llama-index-program-guidance==0.3.0
 llama-index-program-openai==0.3.1
+llama-index-question-gen-guidance==0.3.0
 llama-index-question-gen-openai==0.3.0
 llama-index-readers-file==0.4.5
 llama-index-readers-google==0.6.0
@@ -110,9 +116,12 @@ opentelemetry-instrumentation==0.51b0
 opentelemetry-proto==1.30.0
 opentelemetry-sdk==1.30.0
 opentelemetry-semantic-conventions==0.51b0
+ordered-set==4.1.0
 packaging==24.2
 pandas==2.2.3
 pillow==11.1.0
+pip==25.0
+platformdirs==4.3.6
 propcache==0.2.1
 proto-plus==1.26.0
 protobuf==5.29.3
@@ -159,8 +168,8 @@ tenacity==9.0.0
 threadpoolctl==3.5.0
 tiktoken==0.9.0
 tqdm==4.67.1
-typing-inspect==0.9.0
 typing_extensions==4.12.2
+typing-inspect==0.9.0
 tzdata==2025.1
 uritemplate==4.1.1
 urllib3==1.26.20

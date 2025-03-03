@@ -1,110 +1,168 @@
 import json
 import pandas as pd
-from typing import Dict, List, Any, Union
+from tqdm import tqdm
+from typing import Dict, List, Union, Tuple
 from llama_index.core import (
     VectorStoreIndex,
     load_indices_from_storage,
 )
-from llama_index.core.vector_stores import (
-    MetadataFilters,
-    ExactMatchFilter,
-    FilterCondition
-)
-from llama_index.core.tools import QueryEngineTool, FunctionTool, RetrieverTool, BaseTool
+from llama_index.core.schema import IndexNode
+from llama_index.core.agent import FunctionCallingAgent
+from llama_index.core.indices.base import BaseIndex
+from llama_index.core.query_engine import SubQuestionQueryEngine, RetrieverQueryEngine
+from llama_index.core.tools import QueryEngineTool, ToolMetadata, BaseTool
+from llama_index.core.indices.vector_store.retrievers.retriever import VectorIndexRetriever
+from llama_index.core.vector_stores import ExactMatchFilter, FilterCondition, MetadataFilters
 
 import gspread
-from .config import config
+from config import config
 
 
-def prepare_tools() -> List[BaseTool] | None:
+async def prepare_tools() -> List[BaseTool] | None:
     """
     Function to convert indexes to tools (vector, summary), also create new functions that the AI agent can reference to extract information.
     :return: a list of tools for the LLM agent to use
     """
     print("Preparing tools...")
     tools = []
-    glossary = load_glossary(
-        config.GLOSSARY_DICT)  # load the glossary object that contains filename and description for a team's documents
 
-    # load indexes
-    vector_index = VectorStoreIndex.from_vector_store(
-        vector_store=config.VECTOR_STORE, embed_model=config.EMBED_MODEL
-    )
+    # load indices
     indexes = load_indices_from_storage(
         config.STORAGE_CONTEXT
     )
 
     if indexes:
-        summary_index = indexes[1]
-
-        tools.append(QueryEngineTool.from_defaults(  # convert query engine to a tool with name and description
-            query_engine=summary_index.as_query_engine(  # transform summary index into a query engine
-                llm=config.LLM,
-                response_mode="tree_summarize",
-                use_async=False,
-            ),
-            name=f"summary_tool",
-            description=(
-                "Useful for any requests or questions that require a holistic summary "
-                "of EVERYTHING related to a document."
-                f" To answer questions about more specific sections"
-                f" of the document, please use vector_tool."
-            ),
-        ))
-
-        def vector_search(query: str, filename: str = None) -> str:
-            """
-            Function useful for answering questions or queries related to a particular document.
-            First get available documents from the 'get_team_glossary' tool before calling this tool.
-            :param query: (Required) the detailed query string to answer. str
-            :param filename: (Optional) the document filename to refine the query by.
-            :return: Response object with answer to the provided query.
-            """
-            filters = None
-            if filename:
-                filters_ = [ExactMatchFilter(key="file_name", value=filename)]  # specify the filter type
-                filters = MetadataFilters(
-                    filters=filters_,
-                    condition=FilterCondition.AND,
-                )
-
-            query_engine = vector_index.as_query_engine(  # convert vector to query engine
-                llm=config.LLM,
-                similarity_top_k=3,
-                filters=filters,
-            )
-
-            response = query_engine.query(query)
-            return response.response
+        # Build tools
+        agents, summary = await build_document_agents(indexes)
+        obj_qe = build_agent_objects(agents)
+        sub_qe = build_sub_question_qe(obj_qe)  # Optional: build sub question query engine
 
         tools.append(
-            FunctionTool.from_defaults(
-                fn=vector_search
+            QueryEngineTool(
+                query_engine=sub_qe,
+                metadata=ToolMetadata(
+                    name="sub_query_engine",
+                    description=f"Useful for getting context on different company policy documents. "
+                                f"Summary of documents: {summary}",
+                ),
             )
         )
 
-    def get_team_glossary(team: str = "HR") -> dict[str, str] | list[dict[str, Any]]:
-        """
-        Function for getting a list of document filenames from a particular team name.
-        Call this function first!
-        :param team: the requested team name. e.g: 'HR', 'IT'
-        :return: Response dictionary with filename (can be used as input into 'vector_search' tool) and a description of the document.
-        """
-        team_glossary = glossary.get(team)
-        if not team_glossary:
-            return {
-                "error": "Team name does not exist."
-            }
-
-        return team_glossary
-
-    tools.append(
-        FunctionTool.from_defaults(
-            fn=get_team_glossary
-        )
-    )
-
     return tools
+
+
+async def build_document_agents(indices: List[BaseIndex]) -> Tuple[Dict[str, FunctionCallingAgent], str]:
+    print("Building document agents...")
+    summary_prompt = "Write one sentence about the contents of the document"
+    agents = {}  # Build agents dictionary
+    all_summary = ""
+    for index in tqdm(indices):
+        fname = "_".join(index.index_id.split("_")[:-2])
+        query_engine_tools = []
+
+        if "summary_index" in index.index_id:
+            sqe = index.as_query_engine(llm=config.LLM)
+            summary = await sqe.aquery(summary_prompt)
+            all_summary += f"Document: {fname}, Summary: {summary} \n"
+
+            query_engine_tools.append(
+                QueryEngineTool(
+                    query_engine=sqe,
+                    metadata=ToolMetadata(
+                        name=f"{fname}_summary_tool",
+                        description=(
+                            f"Useful for summarization questions related to {fname}. \n"
+                            f"Document summary: {summary}"
+                        ),
+                    ),
+                )
+            )
+
+            # Get query engine for single document
+            vector_index = VectorStoreIndex.from_vector_store(
+                vector_store=config.VECTOR_STORE, embed_model=config.EMBED_MODEL
+            )
+            filters_ = [ExactMatchFilter(key="tag_name", value=fname)]  # specify the filter type
+            filters = MetadataFilters(
+                filters=filters_,
+                condition=FilterCondition.AND,
+            )
+            retriever = VectorIndexRetriever(
+                index=vector_index,
+                similarity_top_k=3,
+                filters=filters
+            )
+            rqe = RetrieverQueryEngine(
+                retriever=retriever
+            )
+
+            query_engine_tools.append(
+                QueryEngineTool(
+                    query_engine=rqe,
+                    metadata=ToolMetadata(
+                        name=f"{fname}_vector_tool",
+                        description=(
+                            f"Useful for retrieving specific context from {fname}. \n"
+                            f"Document summary: {summary}"
+                        ),
+                    ),
+                )
+            )
+
+        # build agent
+        agent = FunctionCallingAgent.from_tools(
+            query_engine_tools,
+            llm=config.LLM,
+            verbose=True,
+        )
+
+        agents[fname] = agent
+
+    final_prompt = f"All Documents Summary: {all_summary} \nWrite one sentence about the documents and its contents."
+    final_summary = await config.LLM.acomplete(final_prompt)
+    return agents, str(final_summary)
+
+
+def build_agent_objects(agents_dict: Dict[str, FunctionCallingAgent]):
+    objects = []
+    for agent_label in agents_dict:
+        # define index node that links to these agents
+        policy_summary = (
+            f"This content contains company policy documents about {agent_label}. Use"
+            " this index if you need to lookup specific facts about"
+            f" {agent_label}. \nDo not use this index if you want to analyze"
+            " multiple documents."
+        )
+        node = IndexNode(
+            text=policy_summary, index_id=f"{agent_label}_agent_object", obj=agents_dict[agent_label]
+        )
+        objects.append(node)
+
+    # define top-level retriever
+    vector_index = VectorStoreIndex(
+        objects=objects,
+    )
+    objects_query_engine = vector_index.as_query_engine(similarity_top_k=1, verbose=True)
+    return objects_query_engine
+
+
+def build_sub_question_qe(objects_query_engine):
+    query_engine_tools = [
+        QueryEngineTool(
+            query_engine=objects_query_engine,
+            metadata=ToolMetadata(
+                name="policy_engine",
+                description="Useful for getting context on different company policy documents.",
+            ),
+        ),
+    ]
+
+    sub_query_engine = SubQuestionQueryEngine.from_defaults(
+        query_engine_tools=query_engine_tools,
+        use_async=True,
+        llm=config.LLM
+    )
+    return sub_query_engine
 
 
 def get_glossary_sheet(sheet_key, worksheet: Union[int, str] = 0) -> pd.DataFrame:
@@ -114,20 +172,7 @@ def get_glossary_sheet(sheet_key, worksheet: Union[int, str] = 0) -> pd.DataFram
     :param worksheet: name or index of the workbook
     :return: a pandas dataframe
     """
-    credentials = {
-        "type": "service_account",
-        "project_id": config.G_PROJECT_ID,
-        "private_key_id": config.G_PRIVATE_KEY_ID,
-        "private_key": config.G_PRIVATE_KEY.replace(r"\n", "\n"),
-        "client_email": config.G_CLIENT_EMAIL,
-        "client_id": config.G_CLIENT_SERVICE_ID,
-        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-        "token_uri": "https://oauth2.googleapis.com/token",
-        "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-        "client_x509_cert_url": config.G_CLIENT_CERT_URI,
-        "universe_domain": "googleapis.com"
-    }
-    gcloud = gspread.service_account_from_dict(info=credentials)
+    gcloud = gspread.service_account_from_dict(info=config.G_CREDENTIALS)
     sheet = gcloud.open_by_url(sheet_key)
     worksheet = sheet.get_worksheet(worksheet)
     list_rows_worksheet = worksheet.get_all_values()

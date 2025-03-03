@@ -12,7 +12,7 @@ from llama_index.core.agent.react.types import (
 )
 from llama_index.core.llms.llm import LLM
 from llama_index.core.memory import ChatMemoryBuffer
-from llama_index.core.tools.types import BaseTool
+from llama_index.core.tools.types import BaseTool, AsyncBaseTool
 from llama_index.core.workflow import (
     Context,
     Workflow,
@@ -21,9 +21,9 @@ from llama_index.core.workflow import (
     step,
 )
 
-from .utils import prepare_tools
-from .config import config
-from .prompts import SYSTEM_HEADER
+from utils import prepare_tools
+from config import config
+from prompts import SYSTEM_HEADER
 
 
 class PrepEvent(Event):
@@ -160,7 +160,7 @@ class LolaAgent(Workflow):
 
         # call tools -- safely!
         for tool_call in tool_calls:
-            tool = tools_by_name.get(tool_call.tool_name)
+            tool: AsyncBaseTool = tools_by_name.get(tool_call.tool_name)
             if not tool:
                 (await ctx.get("current_reasoning", default=[])).append(
                     ObservationReasoningStep(
@@ -170,7 +170,7 @@ class LolaAgent(Workflow):
                 continue
 
             try:
-                tool_output = tool(**tool_call.tool_kwargs)
+                tool_output = await tool.acall(**tool_call.tool_kwargs)
                 self.sources.append(tool_output)
                 (await ctx.get("current_reasoning", default=[])).append(
                     ObservationReasoningStep(observation=tool_output.content)
@@ -186,10 +186,10 @@ class LolaAgent(Workflow):
         return PrepEvent()
 
 
-def initialize_workflow() -> LolaAgent:
+async def initialize_workflow() -> LolaAgent:
     print("Initializing workflow...")
     print("Loading indexes...")
-    tools = prepare_tools()
+    tools = await prepare_tools()
 
     print("Calling agent...")
     agent = LolaAgent(
@@ -199,8 +199,7 @@ def initialize_workflow() -> LolaAgent:
 
 
 async def run_agent(text):
-    agent = initialize_workflow()
-    print(config.LLM)
+    agent = await initialize_workflow()
 
     start_time = time.time()
     print(f"Running agent at: {start_time}")
@@ -220,4 +219,4 @@ if __name__ == '__main__':
                         type=str)
     args = parser.parse_args()
     asyncio.run(run_agent(str(args.query)))
-#     "What are the eligibility criteria for transport allowance?"
+#     python app/lola_workflow.py "What are the eligibility criteria for transport allowance?"
