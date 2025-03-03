@@ -15,7 +15,7 @@ from llama_index.core.indices.vector_store.retrievers.retriever import VectorInd
 from llama_index.core.vector_stores import ExactMatchFilter, FilterCondition, MetadataFilters
 
 import gspread
-from config import config
+from .config import config
 
 
 async def prepare_tools() -> List[BaseTool] | None:
