@@ -38,7 +38,7 @@ class LolaIngestionPipeline:
         # "Legal": "",
         # "IT": ""
     }
-    RESET_INDEX = False
+    RESET_INDEX = True
     TRANSFORMATIONS = [
         SentenceSplitter(
             chunk_size=256,
@@ -77,6 +77,9 @@ class LolaIngestionPipeline:
         self.vector_store.delete_index()
         doc_infos = await self.doc_store.aget_all_ref_doc_info()
         await asyncio.gather(*[self.doc_store.adelete_ref_doc(info) for info in doc_infos])
+        for struct in config.INDEX_STORE.index_structs():
+            config.INDEX_STORE.delete_index_struct(struct.index_id)
+        config.CACHE.clear("lola_redis_cache")
 
     def clean_text_func(self, text: str) -> str:
         """
