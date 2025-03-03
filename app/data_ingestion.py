@@ -27,7 +27,7 @@ from llama_index.core.node_parser import SentenceSplitter
 from llama_index.readers.file import PDFReader, DocxReader
 
 from dotenv import load_dotenv
-from .config import config
+from config import config
 
 load_dotenv()
 
@@ -66,8 +66,8 @@ class LolaIngestionPipeline:
         self.file_extractor = {".pdf": PDFReader(), ".docx": DocxReader()}
         self.storage_context = config.STORAGE_CONTEXT
 
-        # if self.RESET_INDEX:  # Manually reset all the data from the vector index
-        #     asyncio.run(self.reset_indexes())
+        if self.RESET_INDEX:  # Manually reset all the data from the vector index
+            asyncio.run(self.reset_indexes())
 
     async def reset_indexes(self):
         """
@@ -77,8 +77,8 @@ class LolaIngestionPipeline:
         self.vector_store.delete_index()
         doc_infos = await self.doc_store.aget_all_ref_doc_info()
         await asyncio.gather(*[self.doc_store.adelete_ref_doc(info) for info in doc_infos])
-        for struct in config.INDEX_STORE.index_structs():
-            config.INDEX_STORE.delete_index_struct(struct.index_id)
+        # for struct in config.INDEX_STORE.index_structs():
+        #     config.INDEX_STORE.delete_index_struct(struct.index_id)
         config.CACHE.clear("lola_redis_cache")
 
     def clean_text_func(self, text: str) -> str:
@@ -148,7 +148,7 @@ class LolaIngestionPipeline:
 
         dir_docs_resources = await asyncio.gather(
             *[self.load_resource(gfs, resource, dir_team) for resource in
-              dir_resources])  # Run the "load_resource" asynchronously for each resource
+              dir_resources[:3]])  # Run the "load_resource" asynchronously for each resource
         dir_docs = {k: v for k, v in dir_docs_resources}
         return dir_docs
 
