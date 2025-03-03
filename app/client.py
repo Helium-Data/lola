@@ -8,15 +8,14 @@ from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
 
 from .config import config
 from .lola_listeners import load_listeners
-from .lola_workflow import initialize_workflow
+
 
 app = AsyncApp(
     token=config.SLACK_BOT_TOKEN,
     signing_secret=config.SLACK_SIGNING_SECRET
 )
 assistant = AsyncAssistant()
-agent = asyncio.run(initialize_workflow())
-load_listeners(app, assistant=assistant, agent=agent)
+load_listeners(app, assistant=assistant)
 
 app.use(assistant)
 handler = AsyncSlackRequestHandler(app)
