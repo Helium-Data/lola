@@ -1,12 +1,14 @@
 import json
 import pandas as pd
-from llama_index.core.data_structs import IndexList
+from llama_index.vector_stores.redis import RedisVectorStore
+from redisvl.schema import IndexSchema
 from llama_index.core.data_structs.data_structs import IndexStruct
 from tqdm import tqdm
 from typing import Dict, List, Union, Tuple
 from llama_index.core import (
     VectorStoreIndex,
     load_index_from_storage,
+    load_indices_from_storage,
     SummaryIndex
 )
 from llama_index.core.schema import IndexNode
@@ -30,17 +32,22 @@ def prepare_tools() -> List[BaseTool] | None:
     tools = []
 
     # load indices
-    print(f"Indexes: {config.INDEX_STORE.index_structs()}")
+    indices = load_indices_from_storage(
+        storage_context=config.STORAGE_CONTEXT
+    )
+    print(f"Indexes: {indices}")
     indexes = config.INDEX_STORE.index_structs()
     print(f"{len(indexes)}: {[ind.index_id for ind in indexes]}")
     print(
         f"Redis debug: {config.REDIS_URL}, {config.VECTOR_STORE}, {config.DOC_STORE}, {config.STORAGE_CONTEXT}")
     print(f"Redis Schema: {config.VECTOR_STORE.schema}")
     vector_index = VectorStoreIndex.from_vector_store(
-        vector_store=config.VECTOR_STORE, embed_model=config.EMBED_MODEL
+        vector_store=RedisVectorStore(
+            schema=IndexSchema.from_dict(config.VECTOR_INDEX_SCHEMA),
+            redis_url=config.REDIS_URL,
+        ), embed_model=config.EMBED_MODEL
     )
-    print(f"Vector id: {vector_index.index_id}")
-    print(vector_index.as_query_engine().query("Works"))
+    print(f"Vector id: {vector_index.index_id}: {vector_index.as_query_engine(llm=config.LLM).query("Works")}")
 
     if indexes:
         # Build tools
@@ -72,6 +79,7 @@ def build_document_agents(indices: List[IndexStruct]) -> Tuple[Dict[str, Functio
         query_engine_tools = []
 
         if "summary_index" in index.index_id:
+            print(f"index_id: {index.index_id}")
             summary_index = load_index_from_storage(
                 storage_context=config.STORAGE_CONTEXT,
                 index_id=index.index_id
