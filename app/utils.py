@@ -37,10 +37,11 @@ def prepare_tools() -> List[BaseTool] | None:
         storage_context=config.STORAGE_CONTEXT
     )
     print(f"{len(indices)}: {[ind.index_id for ind in indices]}")
-    vector_index = VectorStoreIndex.from_vector_store(
-        vector_store=config.VECTOR_STORE, embed_model=config.EMBED_MODEL
+    vector_index = VectorStoreIndex(
+        nodes=[], storage_context=config.STORAGE_CONTEXT, embed_model=config.EMBED_MODEL
     )
-    print(f"Vector id: {vector_index.index_id}: {vector_index.as_query_engine(llm=config.LLM).query("Works")}")
+    vqe = vector_index.as_query_engine(llm=config.LLM)
+    print(f"Vector id: {vector_index.index_id}: {vqe.query("Works")}")
 
     if indices:
         # Build tools
