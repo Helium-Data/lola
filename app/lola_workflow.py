@@ -21,9 +21,9 @@ from llama_index.core.workflow import (
     step,
 )
 
-from utils import prepare_tools
-from config import config
-from prompts import SYSTEM_HEADER
+from .utils import prepare_tools
+from .config import config
+from .prompts import SYSTEM_HEADER
 
 
 class PrepEvent(Event):
