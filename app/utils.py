@@ -30,6 +30,8 @@ def prepare_tools() -> List[BaseTool] | None:
     indexes = load_indices_from_storage(
         config.STORAGE_CONTEXT
     )
+    print(f"Redis debug: {config.REDIS_URL}, {config.VECTOR_STORE}, {config.INDEX_STORE}, {config.DOC_STORE}")
+    print(f"Redis Schema: {config.VECTOR_INDEX_SCHEMA}")
     print(f"{len(indexes)}: {[ind.index_id for ind in indexes]}")
 
     if indexes:
