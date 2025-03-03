@@ -81,6 +81,7 @@ class Config:
     STORAGE_CONTEXT = StorageContext.from_defaults(
         index_store=INDEX_STORE,
         docstore=DOC_STORE,
+        vector_store=VECTOR_STORE
     )
     SLACK_BOT_TOKEN = os.environ.get("SLACK_BOT_TOKEN")
     SLACK_SIGNING_SECRET = os.environ.get("SLACK_SIGNING_SECRET")
