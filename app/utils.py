@@ -42,7 +42,6 @@ def prepare_tools() -> List[BaseTool] | None:
     r = redis.Redis(
         host=config.REDIS_HOST, port=config.REDIS_PORT
     )
-    print(f"Info: {r.command_info()}")
     vector_store = RedisVectorStore(
         redis_client=r, overwrite=True
     )
