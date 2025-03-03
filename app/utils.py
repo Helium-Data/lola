@@ -30,6 +30,7 @@ def prepare_tools() -> List[BaseTool] | None:
     indexes = load_indices_from_storage(
         config.STORAGE_CONTEXT
     )
+    print(f"{len(indexes)}: {[ind.index_id for ind in indexes]}")
 
     if indexes:
         # Build tools
