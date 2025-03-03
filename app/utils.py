@@ -1,5 +1,5 @@
 import json
-import redis
+import asyncio
 import pandas as pd
 from llama_index.vector_stores.redis import RedisVectorStore
 from redisvl.schema import IndexSchema
@@ -23,6 +23,7 @@ from llama_index.core.vector_stores import ExactMatchFilter, FilterCondition, Me
 
 import gspread
 from .config import config
+from .data_ingestion import LolaIngestionPipeline
 
 
 def prepare_tools() -> List[BaseTool] | None:
@@ -38,6 +39,10 @@ def prepare_tools() -> List[BaseTool] | None:
         storage_context=config.STORAGE_CONTEXT
     )
     print(f"{len(indices)}: {[ind.index_id for ind in indices]}")
+
+    print("Run Ingestor")
+    ingestor = LolaIngestionPipeline()
+    details = asyncio.run(ingestor.run_ingestion())
 
     vector_index = VectorStoreIndex.from_documents(
         documents=config.DOC_STORE.docs

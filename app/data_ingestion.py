@@ -175,6 +175,7 @@ class LolaIngestionPipeline:
         """
         print("Create nodes...")
         drive_indexes = {}
+        node_parser = SentenceSplitter()
         for filename, docs in tqdm(drive_docs.items()):
             file_name = filename.replace(" ", "_").replace(".pdf", "")
             file_name = file_name.split("/")[1]
@@ -207,12 +208,15 @@ class LolaIngestionPipeline:
 
                 # insert new doc nodes
                 print("Add new docs")
-                summary_index.insert_nodes(doc_nodes)
+                nodes = node_parser.get_nodes_from_documents(docs)
+                summary_index.insert_nodes(nodes)
             else:
                 print(f"Doc nodes: {doc_nodes[0]}")
                 # Creating new indexes
+                nodes = node_parser.get_nodes_from_documents(docs)
+
                 summary_index = SummaryIndex(
-                    nodes=doc_nodes, storage_context=self.storage_context
+                    nodes=nodes, storage_context=self.storage_context
                 )
                 summary_index.set_index_id(f"{file_name}_summary_index")
 
