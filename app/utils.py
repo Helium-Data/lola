@@ -45,8 +45,6 @@ def prepare_tools() -> List[BaseTool] | None:
 
     print("Run Ingestor")
     ingestor = LolaIngestionPipeline()
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(ingestor.reset_indexes())
 
     loop = asyncio.get_event_loop()
     details = loop.run_until_complete(ingestor.run_ingestion())
