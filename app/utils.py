@@ -30,8 +30,15 @@ def prepare_tools() -> List[BaseTool] | None:
     indexes = load_indices_from_storage(
         config.STORAGE_CONTEXT
     )
-    print(f"Redis debug: {config.REDIS_URL}, {config.VECTOR_STORE}, {config.INDEX_STORE}, {config.DOC_STORE}")
+    print(f"Redis debug: {config.REDIS_URL}, {config.VECTOR_STORE}, {config.INDEX_STORE.index_structs()}, {config.DOC_STORE}, {config.STORAGE_CONTEXT.to_dict()}")
     print(f"Redis Schema: {config.VECTOR_INDEX_SCHEMA}")
+    redis_query = "FT.INFO 'gdrive'"
+    print(f"Vector info: {config.VECTOR_STORE.query(redis_query)}")
+    vector_index = VectorStoreIndex.from_vector_store(
+        vector_store=config.VECTOR_STORE, embed_model=config.EMBED_MODEL
+    )
+    print(f"Vector id: {vector_index.index_id}")
+    print(vector_index.as_query_engine().query("Works"))
     print(f"{len(indexes)}: {[ind.index_id for ind in indexes]}")
 
     if indexes:
