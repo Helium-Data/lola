@@ -1,4 +1,5 @@
 import json
+import redis
 import pandas as pd
 from llama_index.vector_stores.redis import RedisVectorStore
 from redisvl.schema import IndexSchema
@@ -37,11 +38,18 @@ def prepare_tools() -> List[BaseTool] | None:
         storage_context=config.STORAGE_CONTEXT
     )
     print(f"{len(indices)}: {[ind.index_id for ind in indices]}")
-    vector_index = VectorStoreIndex(
-        nodes=[], storage_context=config.STORAGE_CONTEXT, embed_model=config.EMBED_MODEL
+
+    r = redis.Redis(
+        host=config.REDIS_HOST, port=config.REDIS_PORT
     )
+    print(f"Info: {r.command_info()}")
+    vector_store = RedisVectorStore(
+        redis_client=r, overwrite=True
+    )
+    vector_index = VectorStoreIndex.from_vector_store(vector_store=vector_store)
     vqe = vector_index.as_query_engine(llm=config.LLM)
     print(f"Vector id: {vector_index.index_id}: {vqe.query("Works")}")
+
 
     if indices:
         # Build tools
@@ -73,7 +81,7 @@ def build_document_agents(indices: List[BaseIndex]) -> Tuple[Dict[str, FunctionC
         query_engine_tools = []
 
         if "summary_index" in index.index_id:
-            print(f"index_id: {index.index_id}")
+            print(f"index_id: {index.index_id}, {index.index_struct}")
             sqe = index.as_query_engine(llm=config.LLM)
             summary = self_retry(sqe.query, summary_prompt)
             all_summary += f"Document: {fname}, Summary: {summary} \n"
