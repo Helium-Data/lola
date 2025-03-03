@@ -42,8 +42,11 @@ def prepare_tools() -> List[BaseTool] | None:
 
     print("Run Ingestor")
     ingestor = LolaIngestionPipeline()
-    asyncio.run(ingestor.reset_indexes())
-    details = asyncio.run(ingestor.run_ingestion())
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(ingestor.reset_indexes())
+
+    loop = asyncio.get_event_loop()
+    details = loop.run_until_complete(ingestor.run_ingestion())
 
     vector_index = VectorStoreIndex.from_documents(
         documents=config.DOC_STORE.docs
