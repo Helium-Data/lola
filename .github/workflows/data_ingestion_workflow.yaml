@@ -7,6 +7,8 @@ on:
     paths:
       - '**/data_ingestion_workflow.yaml'
       - '**/data_ingestion.py'
+      - '**/config.py'
+      - '**/requirements.txt'
       - '**/Dockerfile-ingestion'
 
 env:
