@@ -148,7 +148,7 @@ class LolaIngestionPipeline:
 
         dir_docs_resources = await asyncio.gather(
             *[self.load_resource(gfs, resource, dir_team) for resource in
-              dir_resources[:3]])  # Run the "load_resource" asynchronously for each resource
+              dir_resources])  # Run the "load_resource" asynchronously for each resource
         dir_docs = {k: v for k, v in dir_docs_resources}
         return dir_docs
 
