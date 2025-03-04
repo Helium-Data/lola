@@ -43,7 +43,7 @@ def prepare_tools() -> List[BaseTool] | None:
     print(f"{len(indices)}: {[ind.index_id for ind in indices]}")
 
     vector_index = VectorStoreIndex.from_vector_store(
-        vector_store=config.VECTOR_STORE
+        vector_store=config.VECTOR_STORE, embed_model=config.EMBED_MODEL
     )
     vqe = vector_index.as_query_engine(llm=config.LLM)
     print(f"Vector id: {vector_index.index_id}: {vqe.query("Works")}")
