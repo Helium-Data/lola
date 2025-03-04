@@ -52,14 +52,16 @@ def prepare_tools() -> List[BaseTool] | None:
         # sub_qe = build_sub_question_qe(obj_qe)  # Optional: build sub question query engine
         document_names = [ind.index_id.replace("_summary_index", "") for ind in indices if
                           "summary_index" in ind.index_id]
+        description = (f"Useful for getting context on the following company policy documents. "
+                       f"Available Documents: {document_names}")
+        print(description)
 
         tools.append(
             QueryEngineTool(
                 query_engine=obj_qe,
                 metadata=ToolMetadata(
                     name="main_query_engine",
-                    description=f"Useful for getting context on the following company policy documents. "
-                                f"Available Documents: {document_names}",
+                    description=description,
                 ),
             )
         )
