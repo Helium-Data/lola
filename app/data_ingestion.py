@@ -66,8 +66,8 @@ class LolaIngestionPipeline:
         self.file_extractor = {".pdf": PDFReader(), ".docx": DocxReader()}
         self.storage_context = config.STORAGE_CONTEXT
 
-        # if self.RESET_INDEX:  # Manually reset all the data from the vector index
-        #     asyncio.run(self.reset_indexes())
+        if self.RESET_INDEX:  # Manually reset all the data from the vector index
+            asyncio.run(self.reset_indexes())
 
     async def reset_indexes(self):
         """
@@ -77,8 +77,8 @@ class LolaIngestionPipeline:
         self.vector_store.delete_index()
         doc_infos = await self.doc_store.aget_all_ref_doc_info()
         await asyncio.gather(*[self.doc_store.adelete_ref_doc(info) for info in doc_infos])
-        for struct in config.INDEX_STORE.index_structs():
-            config.INDEX_STORE.delete_index_struct(struct.index_id)
+        # for struct in config.INDEX_STORE.index_structs():
+        #     config.INDEX_STORE.delete_index_struct(struct.index_id)
         config.CACHE.clear("lola_redis_cache")
 
     def clean_text_func(self, text: str) -> str:
