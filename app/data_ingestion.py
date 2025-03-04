@@ -76,7 +76,7 @@ class LolaIngestionPipeline:
         """
         self.vector_store.delete_index()
         doc_infos = await self.doc_store.aget_all_ref_doc_info()
-        await asyncio.gather(*[self.doc_store.adelete_ref_doc(info) for info in doc_infos])
+        await asyncio.gather(*[self.doc_store.adelete_ref_doc(info, raise_error=False) for info in doc_infos])
         # for struct in config.INDEX_STORE.index_structs():
         #     config.INDEX_STORE.delete_index_struct(struct.index_id)
         config.CACHE.clear("lola_redis_cache")
