@@ -83,6 +83,7 @@ class Config:
         docstore=DOC_STORE,
         vector_store=VECTOR_STORE
     )
+
     SLACK_BOT_TOKEN = os.environ.get("SLACK_BOT_TOKEN")
     SLACK_SIGNING_SECRET = os.environ.get("SLACK_SIGNING_SECRET")
     G_CLIENT_ID = os.environ.get("G_CLIENT_ID")
