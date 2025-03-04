@@ -43,12 +43,6 @@ def prepare_tools() -> List[BaseTool] | None:
     )
     print(f"{len(indices)}: {[ind.index_id for ind in indices]}")
 
-    print("Run Ingestor")
-    ingestor = LolaIngestionPipeline()
-
-    loop = asyncio.get_event_loop()
-    details = loop.run_until_complete(ingestor.run_ingestion())
-
     vector_index = VectorStoreIndex.from_documents(
         documents=config.DOC_STORE.docs
     )
