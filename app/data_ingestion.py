@@ -59,6 +59,7 @@ class LolaIngestionPipeline:
         docstore_strategy=DocstoreStrategy.UPSERTS,
         vector_store=config.VECTOR_STORE
     )
+    EXTS = [".pdf", ".docx"]
 
     def __init__(self):
         self.vector_store = config.VECTOR_STORE
@@ -104,7 +105,7 @@ class LolaIngestionPipeline:
             input_files=[resource],
             fs=gfs,
             file_extractor=self.file_extractor,
-            required_exts=[".pdf"]
+            required_exts=self.EXTS
         )  # read resource from the drive using specified extractors and remote file system (GDrive).
         pages = loader.load_data(fs=gfs)
         docs = []
@@ -140,7 +141,8 @@ class LolaIngestionPipeline:
         )  # initialize Google Drive file system with credentials
         dir_resources = None
         for root, dnames, fnames in tqdm(gfs.walk(dir_id)):  # walk through the directory and filter by extension type
-            dir_resources = [f"{dir_id}/{res}" for res in fnames if res.split('.')[-1] == "pdf"]
+            dir_resources = [f"{dir_id}/{res}" for res in fnames if
+                             res.split('.')[-1] in [ext.replace('.', '') for ext in self.EXTS]]
             break
 
         if not dir_resources:

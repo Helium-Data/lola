@@ -2,9 +2,6 @@ import json
 import asyncio
 import pandas as pd
 import nest_asyncio
-from llama_index.vector_stores.redis import RedisVectorStore
-from redisvl.schema import IndexSchema
-from llama_index.core.data_structs.data_structs import IndexStruct
 from tqdm import tqdm
 from typing import Dict, List, Union, Tuple
 from llama_index.core import (
@@ -56,9 +53,9 @@ def prepare_tools() -> List[BaseTool] | None:
 
         tools.append(
             QueryEngineTool(
-                query_engine=sub_qe,
+                query_engine=obj_qe,
                 metadata=ToolMetadata(
-                    name="sub_query_engine",
+                    name="main_query_engine",
                     description=f"Useful for getting context on different company policy documents. "
                                 f"Summary of documents: {summary}",
                 ),
