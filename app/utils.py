@@ -24,7 +24,6 @@ from llama_index.core.vector_stores import ExactMatchFilter, FilterCondition, Me
 
 import gspread
 from .config import config
-from .data_ingestion import LolaIngestionPipeline
 
 nest_asyncio.apply()
 
@@ -48,7 +47,6 @@ def prepare_tools() -> List[BaseTool] | None:
     )
     vqe = vector_index.as_query_engine(llm=config.LLM)
     print(f"Vector id: {vector_index.index_id}: {vqe.query("Works")}")
-
 
     if indices:
         # Build tools
@@ -228,6 +226,7 @@ def load_json_to_dict(file_path: str):
     with open(file_path, 'r') as fp:
         indexes = json.load(fp)
     return indexes
+
 
 def self_retry(func, *args, n_retries=5):
     """
