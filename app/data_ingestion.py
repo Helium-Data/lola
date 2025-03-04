@@ -38,7 +38,7 @@ class LolaIngestionPipeline:
         # "Legal": "",
         # "IT": ""
     }
-    RESET_INDEX = False
+    RESET_INDEX = True
     TRANSFORMATIONS = [
         SentenceSplitter(
             chunk_size=256,
@@ -181,6 +181,7 @@ class LolaIngestionPipeline:
         for filename, docs in tqdm(drive_docs.items()):
             file_name = filename.replace(" ", "_").replace(".pdf", "")
             file_name = file_name.split("/")[1]
+            file_name = file_name[:(64 - 13)]  # satisfy constraint (Member must have length less than or equal to 64)
 
             for doc in docs:
                 doc.metadata["tag_name"] = file_name
@@ -191,40 +192,18 @@ class LolaIngestionPipeline:
             if not doc_nodes:  # if no document has changed
                 continue
 
-            try:
-                index = load_index_from_storage(
-                    config.STORAGE_CONTEXT, index_id=f"{file_name}_summary_index"
-                )
-            except ValueError:
-                index = None
+            print(f"Doc nodes: {doc_nodes[0]}")
+            # Creating new indexes
+            nodes = node_parser.get_nodes_from_documents(docs)
 
-            if index:
-                # load existing index
-                print("Loading indexes")
-                summary_index = index
+            summary_index = SummaryIndex(
+                nodes=nodes, storage_context=self.storage_context
+            )
+            summary_index.set_index_id(f"{file_name}_summary_index")
 
-                # delete docs from all indexes
-                print("Deleting old docs")
-                for doc in doc_nodes:
-                    summary_index.delete(doc.id_)
-
-                # insert new doc nodes
-                print("Add new docs")
-                nodes = node_parser.get_nodes_from_documents(docs)
-                summary_index.insert_nodes(nodes)
-            else:
-                print(f"Doc nodes: {doc_nodes[0]}")
-                # Creating new indexes
-                nodes = node_parser.get_nodes_from_documents(docs)
-
-                summary_index = SummaryIndex(
-                    nodes=nodes, storage_context=self.storage_context
-                )
-                summary_index.set_index_id(f"{file_name}_summary_index")
-
-                drive_indexes[file_name] = {
-                    "summary_index": summary_index.index_id,
-                }
+            drive_indexes[file_name] = {
+                "summary_index": summary_index.index_id,
+            }
 
         self.storage_context.persist()  # Persist indexes (save to file)  TODO: Check if necessary
         self.save_dict_to_json(drive_indexes, "drive_indexes.json")  # save index ids to json file
@@ -267,6 +246,9 @@ class LolaIngestionPipeline:
 
 
 if __name__ == '__main__':
+    import nest_asyncio
+
+    nest_asyncio.apply()
     ingestor = LolaIngestionPipeline()
     details = asyncio.run(ingestor.run_ingestion())
     print("Details: ", details)
