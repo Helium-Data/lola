@@ -38,7 +38,7 @@ class LolaIngestionPipeline:
         # "Legal": "",
         # "IT": ""
     }
-    RESET_INDEX = True
+    RESET_INDEX = False
     TRANSFORMATIONS = [
         SentenceSplitter(
             chunk_size=256,
