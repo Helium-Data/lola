@@ -56,9 +56,9 @@ def prepare_tools() -> List[BaseTool] | None:
 
         tools.append(
             QueryEngineTool(
-                query_engine=sub_qe,
+                query_engine=obj_qe,
                 metadata=ToolMetadata(
-                    name="sub_query_engine",
+                    name="main_query_engine",
                     description=f"Useful for getting context on different company policy documents. "
                                 f"Summary of documents: {summary}",
                 ),
