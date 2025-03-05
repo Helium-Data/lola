@@ -1,5 +1,5 @@
 import asyncio
-
+import nest_asyncio
 from slack_bolt.async_app import (
     AsyncApp,
     AsyncAssistant,
@@ -13,6 +13,8 @@ from slack_sdk.web.async_client import AsyncWebClient
 
 from .lola_workflow import initialize_workflow
 
+nest_asyncio.apply()
+
 
 class LolaSlackListener:
     def __init__(self, app: AsyncApp, assistant: AsyncAssistant):
@@ -20,7 +22,7 @@ class LolaSlackListener:
         self.assistant = assistant
 
         # self.bot_user_id = asyncio.run(self._get_bot_id())
-        self.agent = initialize_workflow()
+        self.agent = asyncio.run(initialize_workflow())
 
     async def _get_bot_id(self):
         # get the bot's own user ID so it can tell when somebody is mentioning it
