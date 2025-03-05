@@ -5,7 +5,7 @@ import time
 from llama_index.core.llms import ChatMessage
 from llama_index.core.tools import ToolSelection, ToolOutput
 from llama_index.core.workflow import Event
-from llama_index.core.agent.react import ReActChatFormatter, ReActOutputParser
+from llama_index.core.llms.function_calling import FunctionCallingLLM
 from llama_index.core.agent.react.types import (
     ActionReasoningStep,
     ObservationReasoningStep,
@@ -44,32 +44,23 @@ class FunctionOutputEvent(Event):
 
 class LolaAgent(Workflow):
     def __init__(
-            self,
-            *args: Any,
-            llm: LLM | None = None,
-            tools: list[BaseTool] | None = None,
-            extra_context: str | None = None,
-            **kwargs: Any,
+        self,
+        *args: Any,
+        llm: FunctionCallingLLM | None = None,
+        tools: List[BaseTool] | None = None,
+        **kwargs: Any,
     ) -> None:
         super().__init__(*args, **kwargs)
         self.tools = tools or []
 
         self.llm = llm
-
-        self.formatter = ReActChatFormatter(context=extra_context or "")
-        self.formatter.system_header = SYSTEM_HEADER.replace(
-            "{context_prompt}",
-            """
-        Here is some context to help you answer the question and plan:
-        {context}
-        """,
-            1,
-        )
-        self.output_parser = ReActOutputParser()
+        assert self.llm.metadata.is_function_calling_model
 
     @step
-    async def new_user_msg(self, ctx: Context, ev: StartEvent) -> PrepEvent:
-        # clear sources, reset existing memory
+    async def prepare_chat_history(
+            self, ctx: Context, ev: StartEvent
+    ) -> InputEvent:
+        # clear sources
         await ctx.set("sources", [])
 
         session_id = ev.get("session_id", f"default-{time.time_ns()}")
@@ -88,98 +79,66 @@ class LolaAgent(Workflow):
         user_msg = ChatMessage(role="user", content=user_input)
         memory.put(user_msg)
 
-        # clear current reasoning
-        await ctx.set("current_reasoning", [])
+        # get chat history
+        chat_history = memory.get()
 
-        # set memory
+        # update context
         await ctx.set("memory", memory)
 
-        return PrepEvent()
-
-    @step
-    async def prepare_chat_history(
-            self, ctx: Context, ev: PrepEvent
-    ) -> InputEvent:
-        # get chat history
-        memory = await ctx.get("memory")
-        chat_history = memory.get()
-        current_reasoning = await ctx.get("current_reasoning", default=[])
-        llm_input = self.formatter.format(
-            self.tools, chat_history, current_reasoning=current_reasoning
-        )
-        return InputEvent(input=llm_input)
+        return InputEvent(input=chat_history)
 
     @step
     async def handle_llm_input(
             self, ctx: Context, ev: InputEvent
-    ) -> Union[ToolCallEvent, PrepEvent, StopEvent]:
+    ) -> ToolCallEvent | StopEvent:
         chat_history = ev.input
-        current_reasoning = await ctx.get("current_reasoning", default=[])
+
+        # stream the response
+        response = await self.llm.achat_with_tools(
+            self.tools, chat_history=chat_history
+        )
+
+        # save the final response, which should have all content
         memory = await ctx.get("memory")
+        memory.put(response.message)
+        await ctx.set("memory", memory)
 
-        response = await self.llm.achat(chat_history)
+        # get tool calls
+        tool_calls = self.llm.get_tool_calls_from_response(
+            response, error_on_no_tool_call=False
+        )
 
-        try:
-            reasoning_step = self.output_parser.parse(response.message.content)
-            current_reasoning.append(reasoning_step)
-
-            if reasoning_step.is_done:
-                memory.put(
-                    ChatMessage(
-                        role="assistant", content=reasoning_step.response
-                    )
-                )
-                await ctx.set("memory", memory)
-                await ctx.set("current_reasoning", current_reasoning)
-
-                sources = await ctx.get("sources", default=[])
-
-                return StopEvent(
-                    result={
-                        "response": reasoning_step.response,
-                        "sources": [sources],
-                        "reasoning": current_reasoning,
-                    }
-                )
-            elif isinstance(reasoning_step, ActionReasoningStep):
-                tool_name = reasoning_step.action
-                tool_args = reasoning_step.action_input
-                return ToolCallEvent(
-                    tool_calls=[
-                        ToolSelection(
-                            tool_id="fake",
-                            tool_name=tool_name,
-                            tool_kwargs=tool_args,
-                        )
-                    ]
-                )
-        except Exception as e:
-            current_reasoning.append(
-                ObservationReasoningStep(
-                    observation=f"There was an error in parsing my reasoning: {e}"
-                )
+        if not tool_calls:
+            sources = await ctx.get("sources", default=[])
+            return StopEvent(
+                result={"response": response, "sources": [*sources]}
             )
-            await ctx.set("current_reasoning", current_reasoning)
-
-        # if no tool calls or final response, iterate again
-        return PrepEvent()
+        else:
+            return ToolCallEvent(tool_calls=tool_calls)
 
     @step
     async def handle_tool_calls(
             self, ctx: Context, ev: ToolCallEvent
-    ) -> PrepEvent:
+    ) -> InputEvent:
         tool_calls = ev.tool_calls
         tools_by_name = {tool.metadata.get_name(): tool for tool in self.tools}
-        current_reasoning = await ctx.get("current_reasoning", default=[])
+
+        tool_msgs = []
         sources = await ctx.get("sources", default=[])
 
         # call tools -- safely!
         for tool_call in tool_calls:
             tool: AsyncBaseTool = tools_by_name.get(tool_call.tool_name)
+            additional_kwargs = {
+                "tool_call_id": tool_call.tool_id,
+                "name": tool.metadata.get_name(),
+            }
             if not tool:
-                current_reasoning.append(
-                    ObservationReasoningStep(
-                        observation=f"Tool {tool_call.tool_name} does not exist"
+                tool_msgs.append(
+                    ChatMessage(
+                        role="tool",
+                        content=f"Tool {tool_call.tool_name} does not exist",
+                        additional_kwargs=additional_kwargs,
                     )
                 )
                 continue
@@ -187,22 +146,32 @@ class LolaAgent(Workflow):
             try:
                 tool_output = await tool.acall(**tool_call.tool_kwargs)
                 sources.append(tool_output)
-                current_reasoning.append(
-                    ObservationReasoningStep(observation=tool_output.content)
+                tool_msgs.append(
+                    ChatMessage(
+                        role="tool",
+                        content=tool_output.content,
+                        additional_kwargs=additional_kwargs,
+                    )
                 )
             except Exception as e:
-                current_reasoning.append(
-                    ObservationReasoningStep(
-                        observation=f"Error calling tool {tool.metadata.get_name()}: {e}"
+                tool_msgs.append(
+                    ChatMessage(
+                        role="tool",
+                        content=f"Encountered error in tool call: {e}",
+                        additional_kwargs=additional_kwargs,
                     )
                 )
 
-        # save new state in context
-        await ctx.set("sources", sources)
-        await ctx.set("current_reasoning", current_reasoning)
+        # update memory
+        memory = await ctx.get("memory")
+        for msg in tool_msgs:
+            memory.put(msg)
 
-        # prep the next iteraiton
-        return PrepEvent()
+        await ctx.set("sources", sources)
+        await ctx.set("memory", memory)
+
+        chat_history = memory.get()
+        return InputEvent(input=chat_history)
 
 
 def initialize_workflow() -> LolaAgent:
