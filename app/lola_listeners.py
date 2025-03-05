@@ -79,6 +79,7 @@ class LolaSlackListener:
             await set_status("Typing...")
             pattern = r'assistant\s*.*?\n'
             response_text = re.sub(pattern, '', response_text)
+            response_text = response_text.replace("assistant: ", "")
 
         await set_status("Still typing...")
         await say(
