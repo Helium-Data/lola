@@ -35,7 +35,7 @@ def prepare_tools() -> List[BaseTool] | None:
     :return: a list of tools for the LLM agent to use
     """
     print("Preparing tools...")
-    tools = []
+    tools: List[QueryEngineTool] = []
 
     # load indices
     indices = load_indices_from_storage(
@@ -51,46 +51,42 @@ def prepare_tools() -> List[BaseTool] | None:
 
     if indices:
         # Build tools
-        agents = build_document_agents(indices)
-        # obj_qe = build_agent_objects(agents)
+        agents, all_doc_names = build_document_agents(indices)
+        obj_qe = build_agent_objects(agents)
         # rqe_tool = build_router_engine(query_engine_tools)
         # sub_qe = build_sub_question_qe(obj_qe)  # Optional: build sub question query engine
-        document_names = [ind.index_id.replace("_summary_index", "") for ind in indices if
-                          "summary_index" in ind.index_id]
-        description = (f"Useful for getting context on the following company policy documents. "
-                       f"Available Documents: {document_names}")
+        description = (f"Useful for getting context and summaries on the following company policy documents. "
+                       f"Available Documents: {all_doc_names}")
         print(description)
 
-        tools = agents
-
-        # tools.append(
-        #     QueryEngineTool(
-        #         query_engine=sub_qe,
-        #         metadata=ToolMetadata(
-        #             name="main_query_engine",
-        #             description=description,
-        #         ),
-        #     )
-        # )
+        tools.append(
+            QueryEngineTool(
+                query_engine=obj_qe,
+                metadata=ToolMetadata(
+                    name="main_query_engine",
+                    description=description,
+                ),
+            )
+        )
 
     return tools
 
 
-def build_document_agents(indices: List[BaseIndex]) -> List[QueryEngineTool]:
+def build_document_agents(indices: List[BaseIndex]) -> Tuple[Dict[str, Dict[str, FunctionCallingAgent]], List[str]]:
     print("Building document agents...")
     summary_prompt = "Describe the contents of the document in one sentence"
-    # agents = {}  # Build agents dictionary
-    query_engine_tools = []
-    all_summary = ""
+    agents = {}  # Build agents dictionary
+    all_doc_names: List[str] = []
     for index in tqdm(indices):
         fname = "_".join(index.index_id.split("_")[:-2])
         fname = fname.strip()
+        query_engine_tools: List[QueryEngineTool] = []
 
         if "summary_index" in index.index_id:
             print(f"index_id: {index.index_id}, {index.index_struct}")
             sqe = index.as_query_engine(llm=config.LLM)
             summary = self_retry(sqe.query, summary_prompt)
-            all_summary += f"Document: {fname}, Summary: {summary} \n"
+            all_doc_names.append(fname)
 
             query_engine_tools.append(
                 QueryEngineTool(
@@ -123,11 +119,28 @@ def build_document_agents(indices: List[BaseIndex]) -> List[QueryEngineTool]:
                 retriever=retriever
             )
 
+            sub_qe = SubQuestionQueryEngine.from_defaults(
+                query_engine_tools=[
+                    QueryEngineTool(
+                        query_engine=rqe,
+                        metadata=ToolMetadata(
+                            name=f"{fname}_base_vector_tool",
+                            description=(
+                                f"Useful for retrieving specific context from {fname}. \n"
+                                f"Contents: {summary}"
+                            ),
+                        ),
+                    )
+                ],
+                use_async=True,
+                llm=config.LLM
+            )
+
             query_engine_tools.append(
                 QueryEngineTool(
-                    query_engine=rqe,
+                    query_engine=sub_qe,
                     metadata=ToolMetadata(
-                        name=f"{fname}_vector_tool",
+                        name=f"{fname}_sub_vector_tool",
                         description=(
                             f"Useful for retrieving specific context from {fname}. \n"
                             f"Contents: {summary}"
@@ -137,18 +150,18 @@ def build_document_agents(indices: List[BaseIndex]) -> List[QueryEngineTool]:
             )
 
             # build agent
-            # agent = FunctionCallingAgent.from_tools(
-            #     query_engine_tools,
-            #     llm=config.LLM,
-            #     verbose=True,
-            # )
-            #
-            # agents[fname] = {
-            #     "agent": agent,
-            #     "summary": f"Contents: {summary} \n"
-            # }
+            agent = FunctionCallingAgent.from_tools(
+                query_engine_tools,
+                llm=config.LLM,
+                verbose=True,
+            )
 
-    return query_engine_tools
+            agents[fname] = {
+                "agent": agent,
+                "summary": f"Contents: {summary} \n"
+            }
+
+    return agents, all_doc_names
 
 
 def build_agent_objects(agents_dict: Dict[str, Dict[str, FunctionCallingAgent]]):
