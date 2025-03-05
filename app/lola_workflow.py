@@ -1,7 +1,7 @@
 import asyncio
 from typing import Any, List, Union, Dict
 import time
-import nest_asyncio
+
 from llama_index.core.llms import ChatMessage
 from llama_index.core.tools import ToolSelection, ToolOutput
 from llama_index.core.workflow import Event
@@ -24,8 +24,6 @@ from llama_index.core.workflow import (
 from .utils import prepare_tools
 from .config import config
 from .prompts import SYSTEM_HEADER
-
-nest_asyncio.apply()
 
 
 class PrepEvent(Event):
@@ -188,10 +186,10 @@ class LolaAgent(Workflow):
         return PrepEvent()
 
 
-async def initialize_workflow() -> LolaAgent:
+def initialize_workflow() -> LolaAgent:
     print("Initializing workflow...")
     print("Loading indexes...")
-    tools = await prepare_tools()
+    tools = prepare_tools()
 
     print("Calling agent...")
     agent = LolaAgent(
@@ -201,7 +199,7 @@ async def initialize_workflow() -> LolaAgent:
 
 
 async def run_agent(text):
-    agent = await initialize_workflow()
+    agent = initialize_workflow()
 
     start_time = time.time()
     print(f"Running agent at: {start_time}")
