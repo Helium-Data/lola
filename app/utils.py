@@ -12,6 +12,12 @@ from pydantic import ValidationError
 from llama_index.core.schema import IndexNode
 from llama_index.core.agent import FunctionCallingAgent
 from llama_index.core.indices.base import BaseIndex
+from llama_index.core.query_engine import RouterQueryEngine
+from llama_index.core.selectors import LLMSingleSelector, LLMMultiSelector
+from llama_index.core.selectors import (
+    PydanticMultiSelector,
+    PydanticSingleSelector,
+)
 from llama_index.core.query_engine import SubQuestionQueryEngine, RetrieverQueryEngine
 from llama_index.core.tools import QueryEngineTool, ToolMetadata, BaseTool
 from llama_index.core.indices.vector_store.retrievers.retriever import VectorIndexRetriever
@@ -47,7 +53,8 @@ def prepare_tools() -> List[BaseTool] | None:
         # Build tools
         query_engine_tools = build_document_agents(indices)
         # obj_qe = build_agent_objects(agents)
-        sub_qe = build_sub_question_qe(query_engine_tools)  # Optional: build sub question query engine
+        rqe_tool = build_router_engine(query_engine_tools)
+        sub_qe = build_sub_question_qe(rqe_tool)  # Optional: build sub question query engine
         document_names = [ind.index_id.replace("_summary_index", "") for ind in indices if
                           "summary_index" in ind.index_id]
         description = (f"Useful for getting context on the following company policy documents. "
@@ -164,7 +171,23 @@ def build_agent_objects(agents_dict: Dict[str, Dict[str, FunctionCallingAgent]])
     return objects_query_engine
 
 
-def build_sub_question_qe(query_engine_tools):
+def build_router_engine(query_engine_tools):
+    query_engine = RouterQueryEngine(
+        selector=LLMMultiSelector.from_defaults(llm=config.LLM),
+        query_engine_tools=query_engine_tools,
+        llm=config.LLM
+    )
+    tool = QueryEngineTool(
+        query_engine=query_engine,
+        metadata=ToolMetadata(
+            name="policy_engine",
+            description="Useful for getting context on different company policy documents.",
+        ),
+    )
+    return tool
+
+
+def build_sub_question_qe(query_engine_tool):
     # query_engine_tools = [
     #     QueryEngineTool(
     #         query_engine=objects_query_engine,
@@ -176,7 +199,7 @@ def build_sub_question_qe(query_engine_tools):
     # ]
 
     sub_query_engine = SubQuestionQueryEngine.from_defaults(
-        query_engine_tools=query_engine_tools,
+        query_engine_tools=[query_engine_tool],
         use_async=True,
         llm=config.LLM
     )
