@@ -23,7 +23,7 @@ from .config import config
 nest_asyncio.apply()
 
 
-def prepare_tools() -> List[BaseTool] | None:
+async def prepare_tools() -> List[BaseTool] | None:
     """
     Function to convert indexes to tools (vector, summary), also create new functions that the AI agent can reference to extract information.
     :return: a list of tools for the LLM agent to use
@@ -41,11 +41,11 @@ def prepare_tools() -> List[BaseTool] | None:
         vector_store=config.VECTOR_STORE, embed_model=config.EMBED_MODEL
     )
     vqe = vector_index.as_query_engine(llm=config.LLM)
-    print(f"Vector id: {vector_index.index_id}: {vqe.query("Works")}")
+    print(f"Vector id: {vector_index.index_id}: {await vqe.aquery("Works")}")
 
     if indices:
         # Build tools
-        agents = build_document_agents(indices)
+        agents = await build_document_agents(indices)
         obj_qe = build_agent_objects(agents)
         # sub_qe = build_sub_question_qe(obj_qe)  # Optional: build sub question query engine
         document_names = [ind.index_id.replace("_summary_index", "") for ind in indices if
@@ -67,9 +67,9 @@ def prepare_tools() -> List[BaseTool] | None:
     return tools
 
 
-def build_document_agents(indices: List[BaseIndex]) -> Dict[str, Dict[str, FunctionCallingAgent]]:
+async def build_document_agents(indices: List[BaseIndex]) -> Dict[str, Dict[str, FunctionCallingAgent]]:
     print("Building document agents...")
-    summary_prompt = "Write one sentence about the contents of the document"
+    summary_prompt = "Describe the contents of the document in one sentence"
     agents = {}  # Build agents dictionary
     all_summary = ""
     for index in tqdm(indices):
@@ -79,7 +79,7 @@ def build_document_agents(indices: List[BaseIndex]) -> Dict[str, Dict[str, Funct
         if "summary_index" in index.index_id:
             print(f"index_id: {index.index_id}, {index.index_struct}")
             sqe = index.as_query_engine(llm=config.LLM)
-            summary = self_retry(sqe.query, summary_prompt)
+            summary = await self_retry(sqe.aquery, summary_prompt)
             all_summary += f"Document: {fname}, Summary: {summary} \n"
 
             query_engine_tools.append(
@@ -228,7 +228,7 @@ def load_json_to_dict(file_path: str):
     return indexes
 
 
-def self_retry(func, *args, n_retries=5):
+async def self_retry(func, *args, n_retries=5):
     """
     Invoke the model 'n_loops' times to ensure we get a valid response from the model.
     :param func: the function generating the response
@@ -238,7 +238,7 @@ def self_retry(func, *args, n_retries=5):
     """
     for _ in range(n_retries):
         try:
-            response = func(*args)
+            response = await func(*args)
             if response:
                 return response
         except ValidationError as e:

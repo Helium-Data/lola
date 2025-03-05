@@ -20,7 +20,7 @@ class LolaSlackListener:
         self.assistant = assistant
 
         # self.bot_user_id = asyncio.run(self._get_bot_id())
-        self.agent = initialize_workflow()
+        self.agent = asyncio.run(initialize_workflow())
 
     async def _get_bot_id(self):
         # get the bot's own user ID so it can tell when somebody is mentioning it
