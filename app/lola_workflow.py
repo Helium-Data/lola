@@ -44,16 +44,17 @@ class FunctionOutputEvent(Event):
 
 class LolaAgent(Workflow):
     def __init__(
-        self,
-        *args: Any,
-        llm: FunctionCallingLLM | None = None,
-        tools: List[BaseTool] | None = None,
-        **kwargs: Any,
+            self,
+            *args: Any,
+            llm: FunctionCallingLLM | None = None,
+            tools: List[BaseTool] | None = None,
+            **kwargs: Any,
     ) -> None:
         super().__init__(*args, **kwargs)
         self.tools = tools or []
 
         self.llm = llm
+        self.llm.system_prompt = SYSTEM_HEADER
         assert self.llm.metadata.is_function_calling_model
 
     @step
