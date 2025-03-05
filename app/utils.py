@@ -79,7 +79,7 @@ def build_document_agents(indices: List[BaseIndex]) -> Tuple[Dict[str, Dict[str,
     all_doc_names: str = ""
     for index in tqdm(indices):
         fname = "_".join(index.index_id.split("_")[:-2])
-        fname = fname.strip()
+        fname = fname.strip().replace("(", "").replace(")", "").replace(".", "")
         query_engine_tools: List[QueryEngineTool] = []
 
         if "summary_index" in index.index_id:
