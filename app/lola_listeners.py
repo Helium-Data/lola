@@ -1,5 +1,5 @@
 import asyncio
-
+import nest_asyncio
 from slack_bolt.async_app import (
     AsyncApp,
     AsyncAssistant,
@@ -12,6 +12,8 @@ from slack_bolt.async_app import (
 from slack_sdk.web.async_client import AsyncWebClient
 
 from .lola_workflow import initialize_workflow
+
+nest_asyncio.apply()
 
 
 class LolaSlackListener:
