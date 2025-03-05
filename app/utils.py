@@ -51,10 +51,10 @@ def prepare_tools() -> List[BaseTool] | None:
 
     if indices:
         # Build tools
-        query_engine_tools = build_document_agents(indices)
-        # obj_qe = build_agent_objects(agents)
-        rqe_tool = build_router_engine(query_engine_tools)
-        sub_qe = build_sub_question_qe(rqe_tool)  # Optional: build sub question query engine
+        agents = build_document_agents(indices)
+        obj_qe = build_agent_objects(agents)
+        # rqe_tool = build_router_engine(query_engine_tools)
+        sub_qe = build_sub_question_qe(obj_qe)  # Optional: build sub question query engine
         document_names = [ind.index_id.replace("_summary_index", "") for ind in indices if
                           "summary_index" in ind.index_id]
         description = (f"Useful for getting context on the following company policy documents. "
@@ -74,14 +74,14 @@ def prepare_tools() -> List[BaseTool] | None:
     return tools
 
 
-def build_document_agents(indices: List[BaseIndex]) -> List[QueryEngineTool]:
+def build_document_agents(indices: List[BaseIndex]) -> Dict[str, Dict[str, FunctionCallingAgent]]:
     print("Building document agents...")
     summary_prompt = "Describe the contents of the document in one sentence"
-    # agents = {}  # Build agents dictionary
-    query_engine_tools = []
+    agents = {}  # Build agents dictionary
     all_summary = ""
     for index in tqdm(indices):
         fname = "_".join(index.index_id.split("_")[:-2])
+        query_engine_tools = []
 
         if "summary_index" in index.index_id:
             print(f"index_id: {index.index_id}, {index.index_struct}")
@@ -134,18 +134,18 @@ def build_document_agents(indices: List[BaseIndex]) -> List[QueryEngineTool]:
             )
 
             # build agent
-            # agent = FunctionCallingAgent.from_tools(
-            #     query_engine_tools,
-            #     llm=config.LLM,
-            #     verbose=True,
-            # )
-            #
-            # agents[fname] = {
-            #     "agent": agent,
-            #     "summary": f"Contents: {summary} \n"
-            # }
+            agent = FunctionCallingAgent.from_tools(
+                query_engine_tools,
+                llm=config.LLM,
+                verbose=True,
+            )
 
-    return query_engine_tools
+            agents[fname] = {
+                "agent": agent,
+                "summary": f"Contents: {summary} \n"
+            }
+
+    return agents
 
 
 def build_agent_objects(agents_dict: Dict[str, Dict[str, FunctionCallingAgent]]):
@@ -187,19 +187,19 @@ def build_router_engine(query_engine_tools):
     return tool
 
 
-def build_sub_question_qe(query_engine_tool):
-    # query_engine_tools = [
-    #     QueryEngineTool(
-    #         query_engine=objects_query_engine,
-    #         metadata=ToolMetadata(
-    #             name="policy_engine",
-    #             description="Useful for getting context on different company policy documents.",
-    #         ),
-    #     ),
-    # ]
+def build_sub_question_qe(objects_query_engine):
+    query_engine_tools = [
+        QueryEngineTool(
+            query_engine=objects_query_engine,
+            metadata=ToolMetadata(
+                name="policy_engine",
+                description="Useful for getting context on different company policy documents.",
+            ),
+        ),
+    ]
 
     sub_query_engine = SubQuestionQueryEngine.from_defaults(
-        query_engine_tools=[query_engine_tool],
+        query_engine_tools=query_engine_tools,
         use_async=True,
         llm=config.LLM
     )
