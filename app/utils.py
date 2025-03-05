@@ -6,9 +6,7 @@ from tqdm import tqdm
 from typing import Dict, List, Union, Tuple
 from llama_index.core import (
     VectorStoreIndex,
-    load_index_from_storage,
     load_indices_from_storage,
-    SummaryIndex
 )
 from pydantic import ValidationError
 from llama_index.core.schema import IndexNode
@@ -47,7 +45,7 @@ def prepare_tools() -> List[BaseTool] | None:
 
     if indices:
         # Build tools
-        agents, summary = build_document_agents(indices)
+        agents = build_document_agents(indices)
         obj_qe = build_agent_objects(agents)
         # sub_qe = build_sub_question_qe(obj_qe)  # Optional: build sub question query engine
         document_names = [ind.index_id.replace("_summary_index", "") for ind in indices if
@@ -69,7 +67,7 @@ def prepare_tools() -> List[BaseTool] | None:
     return tools
 
 
-def build_document_agents(indices: List[BaseIndex]) -> Tuple[Dict[str, FunctionCallingAgent], str]:
+def build_document_agents(indices: List[BaseIndex]) -> Dict[str, Dict[str, FunctionCallingAgent]]:
     print("Building document agents...")
     summary_prompt = "Write one sentence about the contents of the document"
     agents = {}  # Build agents dictionary
@@ -91,7 +89,7 @@ def build_document_agents(indices: List[BaseIndex]) -> Tuple[Dict[str, FunctionC
                         name=f"{fname}_summary_tool",
                         description=(
                             f"Useful for summarization questions related to {fname}. \n"
-                            f"Document summary: {summary}"
+                            f"Contents: {summary}"
                         ),
                     ),
                 )
@@ -122,38 +120,39 @@ def build_document_agents(indices: List[BaseIndex]) -> Tuple[Dict[str, FunctionC
                         name=f"{fname}_vector_tool",
                         description=(
                             f"Useful for retrieving specific context from {fname}. \n"
-                            f"Document summary: {summary}"
+                            f"Contents: {summary}"
                         ),
                     ),
                 )
             )
 
-        # build agent
-        agent = FunctionCallingAgent.from_tools(
-            query_engine_tools,
-            llm=config.LLM,
-            verbose=True,
-        )
+            # build agent
+            agent = FunctionCallingAgent.from_tools(
+                query_engine_tools,
+                llm=config.LLM,
+                verbose=True,
+            )
 
-        agents[fname] = agent
+            agents[fname] = {
+                "agent": agent,
+                "summary": f"Contents: {summary} \n"
+            }
 
-    final_prompt = f"All Documents Summary: {all_summary} \nWrite one sentence about the documents and its contents."
-    final_summary = self_retry(config.LLM.complete, final_prompt)
-    return agents, str(final_summary)
+    return agents
 
 
-def build_agent_objects(agents_dict: Dict[str, FunctionCallingAgent]):
+def build_agent_objects(agents_dict: Dict[str, Dict[str, FunctionCallingAgent]]):
     objects = []
     for agent_label in agents_dict:
         # define index node that links to these agents
         policy_summary = (
             f"This content contains company policy documents about {agent_label}. Use"
             " this index if you need to lookup specific facts about"
-            f" {agent_label}. \nDo not use this index if you want to analyze"
-            " multiple documents."
+            f" {agent_label}. {agents_dict[agent_label]['summary']}."
+            f"\nDo not use this index if you want to analyze multiple documents."
         )
         node = IndexNode(
-            text=policy_summary, index_id=f"{agent_label}_agent_object", obj=agents_dict[agent_label]
+            text=policy_summary, index_id=f"{agent_label}_agent_object", obj=agents_dict[agent_label]["agent"]
         )
         objects.append(node)
 
