@@ -44,11 +44,11 @@ class FunctionOutputEvent(Event):
 
 class LolaAgent(Workflow):
     def __init__(
-        self,
-        *args: Any,
-        llm: FunctionCallingLLM | None = None,
-        tools: List[BaseTool] | None = None,
-        **kwargs: Any,
+            self,
+            *args: Any,
+            llm: FunctionCallingLLM | None = None,
+            tools: List[BaseTool] | None = None,
+            **kwargs: Any,
     ) -> None:
         super().__init__(*args, **kwargs)
         self.tools = tools or []
@@ -81,6 +81,9 @@ class LolaAgent(Workflow):
 
         # get chat history
         chat_history = memory.get()
+
+        system_msg = ChatMessage(role="system", content=SYSTEM_HEADER)
+        chat_history.insert(0, system_msg)
 
         # update context
         await ctx.set("memory", memory)
