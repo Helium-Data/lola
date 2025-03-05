@@ -56,7 +56,7 @@ def prepare_tools() -> List[BaseTool] | None:
         # rqe_tool = build_router_engine(query_engine_tools)
         # sub_qe = build_sub_question_qe(obj_qe)  # Optional: build sub question query engine
         description = (f"Useful for getting context and summaries on the following company policy documents. "
-                       f"Available Documents: {all_doc_names}")
+                       f"Available Documents and keywords: {all_doc_names}")
         print(description)
 
         tools.append(
@@ -74,9 +74,10 @@ def prepare_tools() -> List[BaseTool] | None:
 
 def build_document_agents(indices: List[BaseIndex]) -> Tuple[Dict[str, Dict[str, FunctionCallingAgent]], List[str]]:
     print("Building document agents...")
-    summary_prompt = "Describe the contents of the document in one sentence"
+    summary_prompt = "Describe the contents of the document in one sentence."
+    keyword_prompt = "Write 5 keywords that best describes the contents of the document."
     agents = {}  # Build agents dictionary
-    all_doc_names: List[str] = []
+    all_doc_names: str = ""
     for index in tqdm(indices):
         fname = "_".join(index.index_id.split("_")[:-2])
         fname = fname.strip()
@@ -86,7 +87,8 @@ def build_document_agents(indices: List[BaseIndex]) -> Tuple[Dict[str, Dict[str,
             print(f"index_id: {index.index_id}, {index.index_struct}")
             sqe = index.as_query_engine(llm=config.LLM)
             summary = self_retry(sqe.query, summary_prompt)
-            all_doc_names.append(fname)
+            keywords = self_retry(sqe.query, keyword_prompt)
+            all_doc_names += f"Doc name: {fname}, Doc keywords: {keywords}\n"
 
             query_engine_tools.append(
                 QueryEngineTool(
