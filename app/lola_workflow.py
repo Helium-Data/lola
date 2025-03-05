@@ -54,6 +54,7 @@ class LolaAgent(Workflow):
         self.tools = tools or []
 
         self.llm = llm
+        self.llm.system_prompt = SYSTEM_HEADER
         assert self.llm.metadata.is_function_calling_model
 
     @step
@@ -81,9 +82,6 @@ class LolaAgent(Workflow):
 
         # get chat history
         chat_history = memory.get()
-
-        system_msg = ChatMessage(role="system", content=SYSTEM_HEADER)
-        chat_history.insert(0, system_msg)
 
         # update context
         await ctx.set("memory", memory)
