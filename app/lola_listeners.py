@@ -68,18 +68,11 @@ class LolaSlackListener:
     ):
         thread_ts = payload.get("thread_ts", "")
         query = payload.get("text", "No message")
-        channel = payload.get("channel", "")
 
         await set_title(query)
         await set_status("Typing...")
-        await set_status("Typing...")
 
-        history = await client.conversations_replies(
-            ts=thread_ts, channel=channel, limit=50
-        )
-        prepared_history = await self._prepare_history(history)
-
-        response = await self.agent.run(input=query, history=prepared_history)
+        response = await self.agent.run(input=query, session_id=thread_ts)
         await set_status("Still typing...")
         await say(
             response["response"],

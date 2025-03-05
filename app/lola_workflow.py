@@ -42,6 +42,10 @@ class FunctionOutputEvent(Event):
     output: ToolOutput
 
 
+class StreamEvent(Event):
+    delta: str
+
+
 class LolaAgent(Workflow):
     def __init__(
             self,
@@ -56,7 +60,6 @@ class LolaAgent(Workflow):
 
         self.llm = llm
 
-        self.memory = ChatMemoryBuffer.from_defaults(llm=llm)
         self.formatter = ReActChatFormatter(context=extra_context or "")
         self.formatter.system_header = SYSTEM_HEADER.replace(
             "{context_prompt}",
@@ -67,25 +70,33 @@ class LolaAgent(Workflow):
             1,
         )
         self.output_parser = ReActOutputParser()
-        self.sources = []
 
     @step
     async def new_user_msg(self, ctx: Context, ev: StartEvent) -> PrepEvent:
         # clear sources, reset existing memory
-        self.sources = []
-        self.memory.reset()
+        await ctx.set("sources", [])
 
-        conversation_history: List[Dict[str, str]] = ev.get("history", [])
-        for hist in conversation_history:
-            self.memory.put(ChatMessage(role=hist["role"], content=hist["content"]))
+        session_id = ev.get("session_id", f"default-{time.time_ns()}")
+
+        # init memory
+        await ctx.set("memory", None)
+        memory = ChatMemoryBuffer.from_defaults(
+            llm=self.llm,
+            token_limit=3000,
+            chat_store=config.CHAT_STORE,
+            chat_store_key=session_id,
+        )
 
         # get user input
         user_input = ev.input
         user_msg = ChatMessage(role="user", content=user_input)
-        self.memory.put(user_msg)
+        memory.put(user_msg)
 
         # clear current reasoning
         await ctx.set("current_reasoning", [])
+
+        # set memory
+        await ctx.set("memory", memory)
 
         return PrepEvent()
 
@@ -94,7 +105,8 @@ class LolaAgent(Workflow):
             self, ctx: Context, ev: PrepEvent
     ) -> InputEvent:
         # get chat history
-        chat_history = self.memory.get()
+        memory = await ctx.get("memory")
+        chat_history = memory.get()
         current_reasoning = await ctx.get("current_reasoning", default=[])
         llm_input = self.formatter.format(
             self.tools, chat_history, current_reasoning=current_reasoning
@@ -106,27 +118,33 @@ class LolaAgent(Workflow):
             self, ctx: Context, ev: InputEvent
     ) -> Union[ToolCallEvent, PrepEvent, StopEvent]:
         chat_history = ev.input
+        current_reasoning = await ctx.get("current_reasoning", default=[])
+        memory = await ctx.get("memory")
 
-        response = await self.llm.achat(chat_history)
+        response_gen = await self.llm.astream_chat(chat_history)
+        async for response in response_gen:
+            ctx.write_event_to_stream(StreamEvent(delta=response.delta or ""))
 
         try:
             reasoning_step = self.output_parser.parse(response.message.content)
-            (await ctx.get("current_reasoning", default=[])).append(
-                reasoning_step
-            )
+            current_reasoning.append(reasoning_step)
+
             if reasoning_step.is_done:
-                self.memory.put(
+                memory.put(
                     ChatMessage(
                         role="assistant", content=reasoning_step.response
                     )
                 )
+                await ctx.set("memory", memory)
+                await ctx.set("current_reasoning", current_reasoning)
+
+                sources = await ctx.get("sources", default=[])
+
                 return StopEvent(
                     result={
                         "response": reasoning_step.response,
-                        "sources": [*self.sources],
-                        "reasoning": await ctx.get(
-                            "current_reasoning", default=[]
-                        ),
+                        "sources": [sources],
+                        "reasoning": current_reasoning,
                     }
                 )
             elif isinstance(reasoning_step, ActionReasoningStep):
@@ -142,11 +160,12 @@ class LolaAgent(Workflow):
                     ]
                 )
         except Exception as e:
-            (await ctx.get("current_reasoning", default=[])).append(
+            current_reasoning.append(
                 ObservationReasoningStep(
                     observation=f"There was an error in parsing my reasoning: {e}"
                 )
             )
+            await ctx.set("current_reasoning", current_reasoning)
 
         # if no tool calls or final response, iterate again
         return PrepEvent()
@@ -157,12 +176,14 @@ class LolaAgent(Workflow):
     ) -> PrepEvent:
         tool_calls = ev.tool_calls
         tools_by_name = {tool.metadata.get_name(): tool for tool in self.tools}
+        current_reasoning = await ctx.get("current_reasoning", default=[])
+        sources = await ctx.get("sources", default=[])
 
         # call tools -- safely!
         for tool_call in tool_calls:
             tool: AsyncBaseTool = tools_by_name.get(tool_call.tool_name)
             if not tool:
-                (await ctx.get("current_reasoning", default=[])).append(
+                current_reasoning.append(
                     ObservationReasoningStep(
                         observation=f"Tool {tool_call.tool_name} does not exist"
                     )
@@ -171,16 +192,20 @@ class LolaAgent(Workflow):
 
             try:
                 tool_output = await tool.acall(**tool_call.tool_kwargs)
-                self.sources.append(tool_output)
-                (await ctx.get("current_reasoning", default=[])).append(
+                sources.append(tool_output)
+                current_reasoning.append(
                     ObservationReasoningStep(observation=tool_output.content)
                 )
             except Exception as e:
-                (await ctx.get("current_reasoning", default=[])).append(
+                current_reasoning.append(
                     ObservationReasoningStep(
                         observation=f"Error calling tool {tool.metadata.get_name()}: {e}"
                     )
                 )
+
+        # save new state in context
+        await ctx.set("sources", sources)
+        await ctx.set("current_reasoning", current_reasoning)
 
         # prep the next iteraiton
         return PrepEvent()
