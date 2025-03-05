@@ -9,6 +9,7 @@ from llama_index.storage.kvstore.redis import RedisKVStore as RedisCache
 from llama_index.storage.docstore.redis import RedisDocumentStore
 from llama_index.vector_stores.redis import RedisVectorStore
 from llama_index.storage.index_store.redis import RedisIndexStore
+from llama_index.storage.chat_store.redis import RedisChatStore
 from redisvl.schema import IndexSchema
 from llama_index.core.storage import StorageContext
 from llama_index.core import Settings
@@ -78,6 +79,7 @@ class Config:
     INDEX_STORE = RedisIndexStore.from_host_and_port(
         host=REDIS_HOST, port=REDIS_PORT, namespace="lola_index"
     )
+    CHAT_STORE = RedisChatStore(redis_url=REDIS_URL)
     STORAGE_CONTEXT = StorageContext.from_defaults(
         index_store=INDEX_STORE,
         docstore=DOC_STORE,
