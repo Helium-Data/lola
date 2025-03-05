@@ -51,13 +51,12 @@ def prepare_tools() -> List[BaseTool] | None:
 
     if indices:
         # Build tools
-        agents, all_doc_names = build_document_agents(indices)
+        agents = build_document_agents(indices)
         obj_qe = build_agent_objects(agents)
         # rqe_tool = build_router_engine(query_engine_tools)
         # sub_qe = build_sub_question_qe(obj_qe)  # Optional: build sub question query engine
-        description = (f"Useful for getting context and summaries on the following company policy documents:\n"
-                       f"{all_doc_names}")
-        print(description)
+        description = (f"Useful for getting answers, context and summaries on the company's policy and documents. "
+                       f"Always use this tool to retrieve information based on user's query.")
 
         tools.append(
             QueryEngineTool(
@@ -72,7 +71,7 @@ def prepare_tools() -> List[BaseTool] | None:
     return tools
 
 
-def build_document_agents(indices: List[BaseIndex]) -> Tuple[Dict[str, Dict[str, FunctionCallingAgent]], List[str]]:
+def build_document_agents(indices: List[BaseIndex]) -> Dict[str, Dict[str, FunctionCallingAgent]]:
     print("Building document agents...")
     summary_prompt = "Describe the contents of the document in one sentence."
     agents = {}  # Build agents dictionary
@@ -161,7 +160,7 @@ def build_document_agents(indices: List[BaseIndex]) -> Tuple[Dict[str, Dict[str,
                 "summary": f"Contents: {summary} \n"
             }
 
-    return agents, all_doc_names
+    return agents
 
 
 def build_agent_objects(agents_dict: Dict[str, Dict[str, FunctionCallingAgent]]):
