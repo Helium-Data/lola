@@ -42,10 +42,6 @@ class FunctionOutputEvent(Event):
     output: ToolOutput
 
 
-class StreamEvent(Event):
-    delta: str
-
-
 class LolaAgent(Workflow):
     def __init__(
             self,
@@ -121,9 +117,7 @@ class LolaAgent(Workflow):
         current_reasoning = await ctx.get("current_reasoning", default=[])
         memory = await ctx.get("memory")
 
-        response_gen = await self.llm.astream_chat(chat_history)
-        async for response in response_gen:
-            ctx.write_event_to_stream(StreamEvent(delta=response.delta or ""))
+        response = await self.llm.achat(chat_history)
 
         try:
             reasoning_step = self.output_parser.parse(response.message.content)
