@@ -75,7 +75,6 @@ def prepare_tools() -> List[BaseTool] | None:
 def build_document_agents(indices: List[BaseIndex]) -> Tuple[Dict[str, Dict[str, FunctionCallingAgent]], List[str]]:
     print("Building document agents...")
     summary_prompt = "Describe the contents of the document in one sentence."
-    keyword_prompt = "Write 5 keywords that best describes the contents of the document."
     agents = {}  # Build agents dictionary
     all_doc_names: str = ""
     for index in tqdm(indices):
@@ -87,8 +86,7 @@ def build_document_agents(indices: List[BaseIndex]) -> Tuple[Dict[str, Dict[str,
             print(f"index_id: {index.index_id}, {index.index_struct}")
             sqe = index.as_query_engine(llm=config.LLM)
             summary = self_retry(sqe.query, summary_prompt)
-            keywords = self_retry(sqe.query, keyword_prompt)
-            all_doc_names += f"Doc name: {fname}, Doc keywords: {keywords}\n"
+            all_doc_names += f"Doc name: {fname}, Doc summary: {summary}\n"
 
             query_engine_tools.append(
                 QueryEngineTool(
