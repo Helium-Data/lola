@@ -70,12 +70,18 @@ class LolaSlackListener:
         query = payload.get("text", "No message")
 
         await set_title(query)
-        await set_status("Typing...")
+        await set_status("Thinking...")
 
         response = await self.agent.run(input=query, session_id=thread_ts)
+
+        response_text = str(response["response"])
+        if "thinking" in response_text:
+            await set_status("Typing...")
+            response_text = response_text.split("</thinking>")[1].strip()
+
         await set_status("Still typing...")
         await say(
-            str(response["response"]),
+            response_text,
             thread_ts=thread_ts
         )
         print(response["sources"])
