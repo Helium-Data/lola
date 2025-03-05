@@ -55,7 +55,8 @@ def prepare_tools() -> List[BaseTool] | None:
         obj_qe = build_agent_objects(agents)
         # rqe_tool = build_router_engine(query_engine_tools)
         # sub_qe = build_sub_question_qe(obj_qe)  # Optional: build sub question query engine
-        description = f"Useful for getting context and summaries on the following company policy documents:\n"
+        description = (f"Useful for getting context and summaries on the following company policy documents:\n"
+                       f"{all_doc_names}")
         print(description)
 
         tools.append(
