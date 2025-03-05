@@ -75,7 +75,7 @@ class LolaSlackListener:
         response = await self.agent.run(input=query, session_id=thread_ts)
         await set_status("Still typing...")
         await say(
-            response["response"],
+            str(response["response"]),
             thread_ts=thread_ts
         )
         print(response["sources"])
