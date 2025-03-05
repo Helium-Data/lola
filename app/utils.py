@@ -84,7 +84,7 @@ def build_document_agents(indices: List[BaseIndex]) -> List[QueryEngineTool]:
     all_summary = ""
     for index in tqdm(indices):
         fname = "_".join(index.index_id.split("_")[:-2])
-
+        fname = fname.strip()
 
         if "summary_index" in index.index_id:
             print(f"index_id: {index.index_id}, {index.index_struct}")
