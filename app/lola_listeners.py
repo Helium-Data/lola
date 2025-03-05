@@ -1,5 +1,5 @@
 import asyncio
-
+import re
 from slack_bolt.async_app import (
     AsyncApp,
     AsyncAssistant,
@@ -75,9 +75,10 @@ class LolaSlackListener:
         response = await self.agent.run(input=query, session_id=thread_ts)
 
         response_text = str(response["response"])
-        if "thinking" in response_text:
+        if "assistant" in response_text:
             await set_status("Typing...")
-            response_text = response_text.split("</thinking>")[1].strip()
+            pattern = r'assistant\s*.*?\n'
+            response_text = re.sub(pattern, '', response_text)
 
         await set_status("Still typing...")
         await say(
