@@ -124,7 +124,7 @@ def build_document_agents(indices: List[BaseIndex]) -> Tuple[Dict[str, Dict[str,
                     QueryEngineTool(
                         query_engine=rqe,
                         metadata=ToolMetadata(
-                            name=f"{fname}_base_vector_tool",
+                            name=f"{fname[:-5]}_base_vector_tool",
                             description=(
                                 f"Useful for retrieving specific context from {fname}. \n"
                                 f"Contents: {summary}"
@@ -140,7 +140,7 @@ def build_document_agents(indices: List[BaseIndex]) -> Tuple[Dict[str, Dict[str,
                 QueryEngineTool(
                     query_engine=sub_qe,
                     metadata=ToolMetadata(
-                        name=f"{fname}_sub_vector_tool",
+                        name=f"{fname[:-5]}_sub_vector_tool",
                         description=(
                             f"Useful for retrieving specific context from {fname}. \n"
                             f"Contents: {summary}"
