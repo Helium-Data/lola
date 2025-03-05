@@ -52,36 +52,39 @@ def prepare_tools() -> List[BaseTool] | None:
     if indices:
         # Build tools
         agents = build_document_agents(indices)
-        obj_qe = build_agent_objects(agents)
+        # obj_qe = build_agent_objects(agents)
         # rqe_tool = build_router_engine(query_engine_tools)
-        sub_qe = build_sub_question_qe(obj_qe)  # Optional: build sub question query engine
+        # sub_qe = build_sub_question_qe(obj_qe)  # Optional: build sub question query engine
         document_names = [ind.index_id.replace("_summary_index", "") for ind in indices if
                           "summary_index" in ind.index_id]
         description = (f"Useful for getting context on the following company policy documents. "
                        f"Available Documents: {document_names}")
         print(description)
 
-        tools.append(
-            QueryEngineTool(
-                query_engine=sub_qe,
-                metadata=ToolMetadata(
-                    name="main_query_engine",
-                    description=description,
-                ),
-            )
-        )
+        tools = agents
+
+        # tools.append(
+        #     QueryEngineTool(
+        #         query_engine=sub_qe,
+        #         metadata=ToolMetadata(
+        #             name="main_query_engine",
+        #             description=description,
+        #         ),
+        #     )
+        # )
 
     return tools
 
 
-def build_document_agents(indices: List[BaseIndex]) -> Dict[str, Dict[str, FunctionCallingAgent]]:
+def build_document_agents(indices: List[BaseIndex]) -> List[QueryEngineTool]:
     print("Building document agents...")
     summary_prompt = "Describe the contents of the document in one sentence"
-    agents = {}  # Build agents dictionary
+    # agents = {}  # Build agents dictionary
+    query_engine_tools = []
     all_summary = ""
     for index in tqdm(indices):
         fname = "_".join(index.index_id.split("_")[:-2])
-        query_engine_tools = []
+
 
         if "summary_index" in index.index_id:
             print(f"index_id: {index.index_id}, {index.index_struct}")
@@ -134,18 +137,18 @@ def build_document_agents(indices: List[BaseIndex]) -> Dict[str, Dict[str, Funct
             )
 
             # build agent
-            agent = FunctionCallingAgent.from_tools(
-                query_engine_tools,
-                llm=config.LLM,
-                verbose=True,
-            )
+            # agent = FunctionCallingAgent.from_tools(
+            #     query_engine_tools,
+            #     llm=config.LLM,
+            #     verbose=True,
+            # )
+            #
+            # agents[fname] = {
+            #     "agent": agent,
+            #     "summary": f"Contents: {summary} \n"
+            # }
 
-            agents[fname] = {
-                "agent": agent,
-                "summary": f"Contents: {summary} \n"
-            }
-
-    return agents
+    return query_engine_tools
 
 
 def build_agent_objects(agents_dict: Dict[str, Dict[str, FunctionCallingAgent]]):
