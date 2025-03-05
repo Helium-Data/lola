@@ -173,7 +173,7 @@ def build_agent_objects(agents_dict: Dict[str, Dict[str, FunctionCallingAgent]])
 
 def build_router_engine(query_engine_tools):
     query_engine = RouterQueryEngine(
-        selector=LLMSingleSelector.from_defaults(llm=config.LLM),
+        selector=LLMMultiSelector.from_defaults(llm=config.LLM),
         query_engine_tools=query_engine_tools,
         llm=config.LLM
     )
