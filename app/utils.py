@@ -1,4 +1,5 @@
 import json
+import re
 import asyncio
 import pandas as pd
 import nest_asyncio
@@ -284,3 +285,27 @@ def self_retry(func, *args, n_retries=5):
         except Exception as e:
             print(f"Other error: {e}")
     return None
+
+
+async def get_bot_id(app_):
+    # get the bot's own user ID so it can tell when somebody is mentioning it
+    auth_response = await app_.client.auth_test()
+    bot_user_id_ = auth_response["user_id"]
+    return bot_user_id_
+
+
+async def clean_response(response_text, async_func):
+    if "assistant" in response_text:
+        if async_func:
+            await async_func("Typing...")
+        pattern = r'assistant\s*.*?\n'
+        response_text = re.sub(pattern, '', response_text)
+        response_text = response_text.replace("assistant: ", "")
+        return response_text
+
+
+async def get_user_name(user_id, app_):
+    user_info = await app_.client.users_info(user=user_id)
+    user_name = user_info['user']['name']
+    user_display_name = user_info['user']['profile']['display_name']
+    return user_name, user_display_name
