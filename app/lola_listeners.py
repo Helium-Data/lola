@@ -10,17 +10,15 @@ from slack_bolt.async_app import (
     AsyncGetThreadContext,
 )
 from slack_sdk.web.async_client import AsyncWebClient
-
-from .lola_workflow import initialize_workflow
+from .utils import clean_response
 
 
 class LolaSlackListener:
-    def __init__(self, app: AsyncApp, assistant: AsyncAssistant):
+    def __init__(self, app: AsyncApp, assistant: AsyncAssistant, agent):
         self.app = app
         self.assistant = assistant
 
-        # self.bot_user_id = asyncio.run(self._get_bot_id())
-        self.agent = initialize_workflow()
+        self.agent = agent
 
     async def _get_bot_id(self):
         # get the bot's own user ID so it can tell when somebody is mentioning it
@@ -75,11 +73,7 @@ class LolaSlackListener:
         response = await self.agent.run(input=query, session_id=thread_ts)
 
         response_text = str(response["response"])
-        if "assistant" in response_text:
-            await set_status("Typing...")
-            pattern = r'assistant\s*.*?\n'
-            response_text = re.sub(pattern, '', response_text)
-            response_text = response_text.replace("assistant: ", "")
+        response_text = await clean_response(response_text, set_status)
 
         await set_status("Still typing...")
         await say(
@@ -90,9 +84,9 @@ class LolaSlackListener:
         return
 
 
-def load_listeners(app: AsyncApp, assistant: AsyncAssistant):
+def load_listeners(app: AsyncApp, assistant: AsyncAssistant, agent):
     lola_listener = LolaSlackListener(
-        app=app, assistant=assistant
+        app=app, assistant=assistant, agent=agent
     )
 
     app.event("message")(ack=lola_listener.reply_message, lazy=[lola_listener.reply_message])

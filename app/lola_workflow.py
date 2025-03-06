@@ -63,7 +63,9 @@ class LolaAgent(Workflow):
         # clear sources
         await ctx.set("sources", [])
 
-        session_id = ev.get("session_id", f"default-{time.time_ns()}")
+        session_id = ev.get("session_id", None)
+        if not session_id:
+            session_id = f"default-{time.time_ns()}"
 
         # init memory
         await ctx.set("memory", None)
