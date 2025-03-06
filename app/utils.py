@@ -15,10 +15,7 @@ from llama_index.core.agent import FunctionCallingAgent
 from llama_index.core.indices.base import BaseIndex
 from llama_index.core.query_engine import RouterQueryEngine
 from llama_index.core.selectors import LLMSingleSelector, LLMMultiSelector
-from llama_index.core.selectors import (
-    PydanticMultiSelector,
-    PydanticSingleSelector,
-)
+
 from llama_index.core.query_engine import SubQuestionQueryEngine, RetrieverQueryEngine
 from llama_index.core.tools import QueryEngineTool, ToolMetadata, BaseTool
 from llama_index.core.indices.vector_store.retrievers.retriever import VectorIndexRetriever
@@ -52,12 +49,13 @@ def prepare_tools() -> List[BaseTool] | None:
 
     if indices:
         # Build tools
-        agents = build_document_agents(indices)
+        agents, summary = build_document_agents(indices)
         obj_qe = build_agent_objects(agents)
         # rqe_tool = build_router_engine(query_engine_tools)
         # sub_qe = build_sub_question_qe(obj_qe)  # Optional: build sub question query engine
         description = (f"Useful for getting answers, context and summaries on the company's policy and documents. "
-                       f"Always use this tool to retrieve information based on user's query.")
+                       f"Always use this tool to retrieve information based on user's query."
+                       f"Available documents: {summary}")
 
         tools.append(
             QueryEngineTool(
@@ -72,9 +70,9 @@ def prepare_tools() -> List[BaseTool] | None:
     return tools
 
 
-def build_document_agents(indices: List[BaseIndex]) -> Dict[str, Dict[str, FunctionCallingAgent]]:
+def build_document_agents(indices: List[BaseIndex]) -> Tuple[Dict[str, Dict[str, FunctionCallingAgent]], str]:
     print("Building document agents...")
-    summary_prompt = "Describe the contents of the document in one sentence."
+    summary_prompt = "In one sentence, describe in depth all the contents of the document."
     agents = {}  # Build agents dictionary
     all_doc_names: str = ""
     for index in tqdm(indices):
@@ -161,7 +159,7 @@ def build_document_agents(indices: List[BaseIndex]) -> Dict[str, Dict[str, Funct
                 "summary": f"Contents: {summary} \n"
             }
 
-    return agents
+    return agents, all_doc_names
 
 
 def build_agent_objects(agents_dict: Dict[str, Dict[str, FunctionCallingAgent]]):
