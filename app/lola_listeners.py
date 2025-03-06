@@ -78,7 +78,8 @@ class LolaSlackListener:
         await set_status("Still typing...")
         await say(
             response_text,
-            thread_ts=thread_ts
+            thread_ts=thread_ts,
+            mrkdwn=True
         )
         print(response["sources"])
         return
