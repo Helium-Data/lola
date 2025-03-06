@@ -63,7 +63,11 @@ async def handle_messages(message, say):
                                     user = await get_user_name(message.get('user'), app)
                                     thread_ts = f"{channel}-{user[0]}"
                                     response_text = answer_question(query, thread_ts)
-                                    say(response_text)
+                                    say(
+                                        response_text,
+                                        channel=channel,
+                                        mrkdwn=True
+                                    )
                                     return
 
     # if it's not a question, it might be a threaded reply
