@@ -41,21 +41,16 @@ def prepare_tools() -> List[BaseTool] | None:
     )
     print(f"{len(indices)}: {[ind.index_id for ind in indices]}")
 
-    vector_index = VectorStoreIndex.from_vector_store(
-        vector_store=config.VECTOR_STORE, embed_model=config.EMBED_MODEL
-    )
-    vqe = vector_index.as_query_engine(llm=config.LLM)
-    print(f"Vector id: {vector_index.index_id}: {vqe.query("Works")}")
-
     if indices:
         # Build tools
         agents, summary = build_document_agents(indices)
         obj_qe = build_agent_objects(agents)
         # rqe_tool = build_router_engine(query_engine_tools)
         # sub_qe = build_sub_question_qe(obj_qe)  # Optional: build sub question query engine
-        description = (f"Useful for getting answers, context and summaries on the company's policy and documents. "
-                       f"Always use this tool to retrieve information based on user's query."
-                       f"Available documents: {summary}")
+        description = (f"Use this tool to fetch answers, context and summaries on the company's "
+                       f"policy and official documents.\n"
+                       f"ALWAYS use this tool FIRST to check and retrieve information based on user's query!")
+                       # f"Available documents: {summary}")
 
         tools.append(
             QueryEngineTool(
@@ -72,7 +67,7 @@ def prepare_tools() -> List[BaseTool] | None:
 
 def build_document_agents(indices: List[BaseIndex]) -> Tuple[Dict[str, Dict[str, FunctionCallingAgent]], str]:
     print("Building document agents...")
-    summary_prompt = "In one sentence, describe in depth all the contents of the document."
+    summary_prompt = "Describe in depth, the contents of the document."
     agents = {}  # Build agents dictionary
     all_doc_names: str = ""
     for index in tqdm(indices):
@@ -93,7 +88,6 @@ def build_document_agents(indices: List[BaseIndex]) -> Tuple[Dict[str, Dict[str,
                         name=f"{fname}_summary_tool",
                         description=(
                             f"Useful for summarization questions related to {fname}. \n"
-                            f"Contents: {summary}"
                         ),
                     ),
                 )
@@ -125,7 +119,6 @@ def build_document_agents(indices: List[BaseIndex]) -> Tuple[Dict[str, Dict[str,
                             name=f"{fname[:-5]}_base_vector_tool",
                             description=(
                                 f"Useful for retrieving specific context from {fname}. \n"
-                                f"Contents: {summary}"
                             ),
                         ),
                     )
@@ -141,7 +134,6 @@ def build_document_agents(indices: List[BaseIndex]) -> Tuple[Dict[str, Dict[str,
                         name=f"{fname[:-5]}_sub_vector_tool",
                         description=(
                             f"Useful for retrieving specific context from {fname}. \n"
-                            f"Contents: {summary}"
                         ),
                     ),
                 )
@@ -156,7 +148,7 @@ def build_document_agents(indices: List[BaseIndex]) -> Tuple[Dict[str, Dict[str,
 
             agents[fname] = {
                 "agent": agent,
-                "summary": f"Contents: {summary} \n"
+                "summary": f"{summary}"
             }
 
     return agents, all_doc_names
@@ -168,8 +160,8 @@ def build_agent_objects(agents_dict: Dict[str, Dict[str, FunctionCallingAgent]])
         # define index node that links to these agents
         policy_summary = (
             f"This content contains company policy documents about {agent_label}. Use"
-            " this index if you need to lookup specific facts about"
-            f" {agent_label}. {agents_dict[agent_label]['summary']}."
+            " this index if you need to lookup specific facts about: "
+            f"{agents_dict[agent_label]['summary']}."
             f"\nDo not use this index if you want to analyze multiple documents."
         )
         node = IndexNode(
