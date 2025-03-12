@@ -6,11 +6,8 @@ from llama_index.core.llms import ChatMessage
 from llama_index.core.tools import ToolSelection, ToolOutput
 from llama_index.core.workflow import Event
 from llama_index.core.llms.function_calling import FunctionCallingLLM
-from llama_index.core.agent.react.types import (
-    ActionReasoningStep,
-    ObservationReasoningStep,
-)
-from llama_index.core.llms.llm import LLM
+from llama_index.utils.workflow import draw_all_possible_flows
+from llama_index.core.query_pipeline import QueryPipeline
 from llama_index.core.memory import ChatMemoryBuffer
 from llama_index.core.tools.types import BaseTool, AsyncBaseTool
 from llama_index.core.workflow import (
@@ -23,7 +20,7 @@ from llama_index.core.workflow import (
 
 from .utils import prepare_tools
 from .config import config
-from .prompts import SYSTEM_HEADER
+from .prompts import SYSTEM_HEADER, RELEVANCY_PROMPT_TEMPLATE
 
 
 class PrepEvent(Event):
@@ -32,6 +29,14 @@ class PrepEvent(Event):
 
 class InputEvent(Event):
     input: list[ChatMessage]
+
+
+class RelevancyEvent(Event):
+    tool_msgs: list[ChatMessage]
+
+
+class ResponseEvent(Event):
+    history: list[ChatMessage]
 
 
 class ToolCallEvent(Event):
@@ -54,7 +59,11 @@ class LolaAgent(Workflow):
         self.tools = tools or []
 
         self.llm = llm
+        self.chat_llm = llm
         assert self.llm.metadata.is_function_calling_model
+
+        self.relevancy_pipeline = QueryPipeline(chain=[RELEVANCY_PROMPT_TEMPLATE, llm])
+        self.response_pipeline = QueryPipeline(chain=[SYSTEM_HEADER, llm])
 
     @step
     async def prepare_chat_history(
@@ -80,14 +89,10 @@ class LolaAgent(Workflow):
         user_input = ev.input
         user_msg = ChatMessage(role="user", content=user_input)
         memory.put(user_msg)
+        await ctx.set("query_str", user_input)
 
         # get chat history
         chat_history = memory.get()
-
-        if len(chat_history) == 1:
-            system_msg = ChatMessage(role="system", content=SYSTEM_HEADER)
-            chat_history.insert(0, system_msg)
-            memory.set(chat_history)
 
         # update context
         await ctx.set("memory", memory)
@@ -97,7 +102,7 @@ class LolaAgent(Workflow):
     @step
     async def handle_llm_input(
             self, ctx: Context, ev: InputEvent
-    ) -> ToolCallEvent | StopEvent:
+    ) -> ToolCallEvent | ResponseEvent:
         chat_history = ev.input
 
         # stream the response
@@ -105,20 +110,19 @@ class LolaAgent(Workflow):
             self.tools, chat_history=chat_history
         )
 
-        # save the final response, which should have all content
-        memory = await ctx.get("memory")
-        memory.put(response.message)
-        await ctx.set("memory", memory)
-
         # get tool calls
         tool_calls = self.llm.get_tool_calls_from_response(
             response, error_on_no_tool_call=False
         )
 
+        # save the final response, which should have all content
+        memory = await ctx.get("memory")
+        memory.put(response.message)
+        await ctx.set("memory", memory)
+
         if not tool_calls:
-            sources = await ctx.get("sources", default=[])
-            return StopEvent(
-                result={"response": response, "sources": [*sources]}
+            return ResponseEvent(
+                history=memory.get()
             )
         else:
             return ToolCallEvent(tool_calls=tool_calls)
@@ -126,7 +130,7 @@ class LolaAgent(Workflow):
     @step
     async def handle_tool_calls(
             self, ctx: Context, ev: ToolCallEvent
-    ) -> InputEvent:
+    ) -> RelevancyEvent:
         tool_calls = ev.tool_calls
         tools_by_name = {tool.metadata.get_name(): tool for tool in self.tools}
 
@@ -169,19 +173,63 @@ class LolaAgent(Workflow):
                     )
                 )
 
+        await ctx.set("sources", sources)
+
+        return RelevancyEvent(tool_msgs=tool_msgs)
+
+    @step
+    async def eval_relevance(
+            self, ctx: Context, ev: RelevancyEvent
+    ) -> InputEvent:
+        """Evaluate relevancy of retrieved documents with the query."""
+        tool_msgs = ev.tool_msgs
+        query_str = await ctx.get("query_str")
+
+        relevancy_results = []
+        for msg in tool_msgs:
+            relevancy = await self.relevancy_pipeline.arun(
+                context_str=msg.content, query_str=query_str
+            )
+            relevance_response = f"Tool output: {msg.content} \nRelevancy: {relevancy.message.content.lower().strip()}"
+            relevancy_results.append(
+                ChatMessage(
+                    role="tool",
+                    content=relevance_response,
+                    additional_kwargs=msg.additional_kwargs,
+                )
+            )
+
         # update memory
         memory = await ctx.get("memory")
-        for msg in tool_msgs:
+        for msg in relevancy_results:
             memory.put(msg)
 
-        await ctx.set("sources", sources)
         await ctx.set("memory", memory)
 
         chat_history = memory.get()
         return InputEvent(input=chat_history)
 
+    @step
+    async def handle_response(
+            self, ctx: Context, ev: ResponseEvent
+    ) -> StopEvent:
+        """Evaluate relevancy of retrieved documents with the query."""
+        chat_history = ev.history
+        new_chat_history = [chat_h for chat_h in chat_history if chat_h.role in ["user", "assistant"]]
 
-def initialize_workflow() -> LolaAgent:
+        response = await self.response_pipeline.arun(conversation=chat_history)
+        print(f"Chat: {response}")
+
+        # save the final response
+        memory = await ctx.get("memory")
+        memory.put(response)
+        await ctx.set("memory", memory)
+
+        sources = await ctx.get("sources", default=[])
+        return StopEvent(result={"response": response, "sources": [*sources]})
+
+
+def initialize_workflow(visualize_workflow=False) -> LolaAgent:
     print("Initializing workflow...")
     print("Loading indexes...")
     tools = prepare_tools()
@@ -190,6 +238,8 @@ def initialize_workflow() -> LolaAgent:
     agent = LolaAgent(
         llm=config.LLM, tools=tools, verbose=True, timeout=1000
     )
+    if visualize_workflow:
+        draw_all_possible_flows(LolaAgent, filename="lola_workflow.html")
     return agent
 
 
