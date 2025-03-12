@@ -23,7 +23,7 @@ Your task is to use the chat context provided to respond to the user while follo
 ## Current Conversation
 Below is the current conversation consisting of interleaving human and assistant messages.
 {conversation}
-Lola: 
+'Lola': 
 """)
 RELEVANCY_PROMPT_TEMPLATE = PromptTemplate(
     template="""As a grader, your task is to evaluate the relevance of a document retrieved in response to a user's question.
