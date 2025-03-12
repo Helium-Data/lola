@@ -2,7 +2,7 @@ import asyncio
 from typing import Any, List, Union, Dict
 import time
 
-from llama_index.core.llms import ChatMessage
+from llama_index.core.llms import ChatMessage, MessageRole
 from llama_index.core.tools import ToolSelection, ToolOutput
 from llama_index.core.workflow import Event
 from llama_index.core.llms.function_calling import FunctionCallingLLM
@@ -215,14 +215,22 @@ class LolaAgent(Workflow):
     ) -> StopEvent:
         """Evaluate relevancy of retrieved documents with the query."""
         chat_history = ev.history
-        new_chat_history = [chat_h for chat_h in chat_history if chat_h.role in ["user", "assistant"]]
+        new_chat_history = ""
+        for chat in chat_history:
+            if chat.role == MessageRole.USER:
+                role = "user"
+            elif chat.role == MessageRole.TOOL:
+                role = "tool"
+            else:
+                role = "assistant"
+            new_chat_history += f"\n'{role}': {chat.content.strip()}"
 
-        response = await self.response_pipeline.arun(conversation=chat_history)
-        print(f"Chat: {response}")
+        response = await self.response_pipeline.arun(conversation=new_chat_history)
+        print(f"Chat: {response.message}")
 
         # save the final response
         memory = await ctx.get("memory")
-        memory.put(response)
+        memory.put(response.message)
         await ctx.set("memory", memory)
 
         sources = await ctx.get("sources", default=[])
