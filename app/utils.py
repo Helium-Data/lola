@@ -291,6 +291,7 @@ async def clean_response(response_text, async_func):
         pattern = r'assistant\s*.*?\n'
         response_text = re.sub(pattern, '', response_text)
         response_text = response_text.replace("assistant: ", "")
+        response_text = response_text.replace("**", "*")  # format to slack's bold syntax. *Bold*
         return response_text
 
 
