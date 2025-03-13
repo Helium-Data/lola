@@ -175,7 +175,7 @@ def build_agent_objects(agents_dict: Dict[str, Dict[str, FunctionCallingAgent]])
     vector_index = VectorStoreIndex(
         objects=objects,
     )
-    objects_query_engine = vector_index.as_query_engine(similarity_top_k=2, verbose=True)
+    objects_query_engine = vector_index.as_query_engine(similarity_top_k=1, verbose=True)
     return objects_query_engine
 
 
