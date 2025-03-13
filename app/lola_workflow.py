@@ -36,6 +36,7 @@ class RelevancyEvent(Event):
 
 
 class ResponseEvent(Event):
+    answer: ChatMessage
     history: list[ChatMessage]
 
 
@@ -122,7 +123,8 @@ class LolaAgent(Workflow):
 
         if not tool_calls:
             return ResponseEvent(
-                history=memory.get()
+                history=memory.get(),
+                answer=response.message
             )
         else:
             return ToolCallEvent(tool_calls=tool_calls)
@@ -215,8 +217,9 @@ class LolaAgent(Workflow):
     ) -> StopEvent:
         """Evaluate relevancy of retrieved documents with the query."""
         chat_history = ev.history
+        answer = ev.answer
         new_chat_history = ""
-        for chat in chat_history:
+        for chat in chat_history[:-1]:
             if chat.role == MessageRole.USER:
                 role = "user"
             elif chat.role == MessageRole.TOOL:
@@ -225,7 +228,7 @@ class LolaAgent(Workflow):
                 role = "assistant"
             new_chat_history += f"\n'{role}': {chat.content.strip()}"
 
-        response = await self.response_pipeline.arun(conversation=new_chat_history)
+        response = await self.response_pipeline.arun(conversation=new_chat_history, answer=answer)
         print(f"Chat: {response.message}")
 
         # save the final response
