@@ -47,7 +47,7 @@ def prepare_tools() -> List[BaseTool] | None:
         agents, summary = build_document_agents(indices)
         obj_qe = build_agent_objects(agents)
         # rqe_tool = build_router_engine(query_engine_tools)
-        # sub_qe = build_sub_question_qe(obj_qe)  # Optional: build sub question query engine
+        sub_qe = build_sub_question_qe(obj_qe)  # Optional: build sub question query engine
         description = (f"Use this tool to fetch answers, context and summaries on the company's "
                        f"policy and official documents.\n"
                        f"ALWAYS use this tool FIRST to check and retrieve information based on user's query!")
@@ -55,7 +55,7 @@ def prepare_tools() -> List[BaseTool] | None:
 
         tools.append(
             QueryEngineTool(
-                query_engine=obj_qe,
+                query_engine=sub_qe,
                 metadata=ToolMetadata(
                     name="main_query_engine",
                     description=description,
