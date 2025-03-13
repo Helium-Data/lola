@@ -68,7 +68,7 @@ def prepare_tools() -> List[BaseTool] | None:
 
 def build_document_agents(indices: List[BaseIndex]) -> Tuple[Dict[str, Dict[str, FunctionCallingAgent]], str]:
     print("Building document agents...")
-    summary_prompt = "Describe in depth, the contents of the document."
+    summary_prompt = "Describe in depth, the topics covered in the document."
     agents = {}  # Build agents dictionary
     all_doc_names: str = ""
     for index in tqdm(indices):
