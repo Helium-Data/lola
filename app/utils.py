@@ -3,6 +3,7 @@ import re
 import asyncio
 import pandas as pd
 import nest_asyncio
+from llama_index.core.indices.list.base import ListRetrieverMode
 from tqdm import tqdm
 from typing import Dict, List, Union, Tuple
 from llama_index.core import (
@@ -50,7 +51,7 @@ def prepare_tools() -> List[BaseTool] | None:
         description = (f"Use this tool to fetch answers, context and summaries on the company's "
                        f"policy and official documents.\n"
                        f"ALWAYS use this tool FIRST to check and retrieve information based on user's query!")
-                       # f"Available documents: {summary}")
+        # f"Available documents: {summary}")
 
         tools.append(
             QueryEngineTool(
@@ -77,7 +78,8 @@ def build_document_agents(indices: List[BaseIndex]) -> Tuple[Dict[str, Dict[str,
 
         if "summary_index" in index.index_id:
             print(f"index_id: {index.index_id}, {index.index_struct}")
-            sqe = index.as_query_engine(llm=config.LLM)
+            sqe = index.as_query_engine(llm=config.LLM, retriever_mode=ListRetrieverMode.EMBEDDING,
+                                        embed_model=config.EMBED_MODEL)
             summary = self_retry(sqe.query, summary_prompt)
             all_doc_names += f"- Document: {fname}, Summary: {summary}\n"
 
@@ -173,7 +175,7 @@ def build_agent_objects(agents_dict: Dict[str, Dict[str, FunctionCallingAgent]])
     vector_index = VectorStoreIndex(
         objects=objects,
     )
-    objects_query_engine = vector_index.as_query_engine(similarity_top_k=1, verbose=True)
+    objects_query_engine = vector_index.as_query_engine(similarity_top_k=2, verbose=True)
     return objects_query_engine
 
 
