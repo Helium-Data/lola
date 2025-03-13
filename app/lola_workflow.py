@@ -20,7 +20,7 @@ from llama_index.core.workflow import (
 
 from .utils import prepare_tools
 from .config import config
-from .prompts import SYSTEM_HEADER, RELEVANCY_PROMPT_TEMPLATE
+from .prompts import SYSTEM_HEADER, RELEVANCY_PROMPT_TEMPLATE, QA_SYSTEM_PROMPT
 
 
 class PrepEvent(Event):
@@ -95,6 +95,11 @@ class LolaAgent(Workflow):
         # get chat history
         chat_history = memory.get()
 
+        if len(chat_history) == 1:
+            system_msg = ChatMessage(role="system", content=QA_SYSTEM_PROMPT)
+            chat_history.insert(0, system_msg)
+            memory.set(chat_history)
+
         # update context
         await ctx.set("memory", memory)
 
@@ -108,7 +113,7 @@ class LolaAgent(Workflow):
 
         # stream the response
         response = await self.llm.achat_with_tools(
-            self.tools, chat_history=chat_history
+            self.tools, chat_history=chat_history, allow_parallel_tool_calls=True
         )
 
         # get tool calls
