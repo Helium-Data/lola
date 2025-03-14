@@ -24,6 +24,7 @@ from llama_index.core.vector_stores import ExactMatchFilter, FilterCondition, Me
 
 import gspread
 from .config import config
+from .prompts import DOC_AGENT_SYSTEM_PROMPT
 
 nest_asyncio.apply()
 
@@ -146,6 +147,11 @@ def build_document_agents(indices: List[BaseIndex]) -> Tuple[Dict[str, Dict[str,
                 query_engine_tools,
                 llm=config.LLM,
                 verbose=True,
+                system_prompt=DOC_AGENT_SYSTEM_PROMPT.format(
+                    filename=fname,
+                    summary_tool=f"{fname}_summary_tool",
+                    vector_tool=f"{fname[:-5]}_sub_vector_tool"
+                )
             )
 
             agents[fname] = {
