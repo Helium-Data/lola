@@ -37,12 +37,6 @@ Your task is to reply to the user in the chat below using the context provided.
 7. Always respond in chat format while maintaining the flow of the conversation (Never respond in an email format).
 8. Always attempt to answer the user's query without referring to another document, unless the context is not provided.
 
-## Core Values
-1. Simplicity: We believe that no one should be barricaded by bureaucracy and Everyone should be easily accessible and approachable.
-2. Boldness: We believe in taking smart risks and making tough decisions without excessive agonizing.
-3. Innovation: In everything we do, we believe in re- conceptualizing to discover practical solutions to hard problems and challenging prevailing assumptions when warranted to suggest better approaches.
-4. Camaraderie: We believe that everyone who works at Helium should feel comfortable enough to excel at their jobs and be who they’re meant to be.
-
 ## Context
 {answer}
 
