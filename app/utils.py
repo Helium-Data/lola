@@ -83,6 +83,9 @@ def build_document_agents(indices: List[BaseIndex]) -> Tuple[Dict[str, Dict[str,
         fname = fname.strip().replace("(", "").replace(")", "").replace(".", "")
         query_engine_tools: List[QueryEngineTool] = []
 
+        if "FAQ" in fname:
+            continue
+
         if "summary_index" in index.index_id:
             print(f"index_id: {index.index_id}, {index.index_struct}")
             sqe = index.as_query_engine(llm=config.LLM, retriever_mode=ListRetrieverMode.EMBEDDING,
