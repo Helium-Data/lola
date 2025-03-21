@@ -194,10 +194,8 @@ class LolaIngestionPipeline:
 
             print(f"Doc nodes: {doc_nodes[0]}")
             # Creating new indexes
-            nodes = node_parser.get_nodes_from_documents(docs)
-
             summary_index = SummaryIndex(
-                nodes=nodes, storage_context=self.storage_context
+                nodes=doc_nodes, storage_context=self.storage_context
             )
             summary_index.set_index_id(f"{file_name}_summary_index")
 
