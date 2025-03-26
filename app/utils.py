@@ -1,15 +1,17 @@
 import json
-import re
 import asyncio
+
 import pandas as pd
 import nest_asyncio
 import requests
 from llama_index.core.indices.list.base import ListRetrieverMode
+from requests import HTTPError
 from tqdm import tqdm
-from typing import Dict, List, Union, Tuple
+from typing import Dict, List, Union, Tuple, Any
 from llama_index.core import (
     VectorStoreIndex,
     load_indices_from_storage, Document, Response,
+    load_index_from_storage
 )
 from pydantic import ValidationError
 from bs4 import BeautifulSoup
@@ -18,7 +20,7 @@ from llama_index.core.agent import FunctionCallingAgent
 from llama_index.core.indices.base import BaseIndex
 from llama_index.core.query_engine import RouterQueryEngine
 from llama_index.core.selectors import LLMSingleSelector, LLMMultiSelector
-
+from llama_index.core.question_gen.llm_generators import LLMQuestionGenerator
 from llama_index.core.query_engine import SubQuestionQueryEngine, RetrieverQueryEngine
 from llama_index.core.tools import QueryEngineTool, ToolMetadata, BaseTool, FunctionTool
 from llama_index.core.indices.vector_store.retrievers.retriever import VectorIndexRetriever
@@ -26,9 +28,11 @@ from llama_index.core.vector_stores import ExactMatchFilter, FilterCondition, Me
 
 import gspread
 from .config import config
-from .prompts import DOC_AGENT_SYSTEM_PROMPT
+from .prompts import DOC_AGENT_SYSTEM_PROMPT, DOC_SUMMARY_PROMPT, MAIN_QUERY_ENGINE_PROMPT, \
+    CUSTOM_SUB_QUESTION_PROMPT_TMPL
 
 nest_asyncio.apply()
+SAGE_BASE_URL = "https://heliumhealthnigeria.sage.hr/api/"
 
 
 def prepare_tools() -> List[BaseTool] | None:
@@ -44,6 +48,9 @@ def prepare_tools() -> List[BaseTool] | None:
         storage_context=config.STORAGE_CONTEXT
     )
     print(f"{len(indices)}: {[ind.index_id for ind in indices]}")
+    faq_index = load_index_from_storage(
+        storage_context=config.STORAGE_CONTEXT, index_id="For_LolaHR_-_FAQs_Document_summary_index"
+    )
 
     if indices:
         # Build tools
@@ -51,138 +58,311 @@ def prepare_tools() -> List[BaseTool] | None:
         obj_qe = build_agent_objects(agents)
         # rqe_tool = build_router_engine(query_engine_tools)
         sub_qe = build_sub_question_qe(obj_qe)  # Optional: build sub question query engine
-        description = (f"Use this tool to fetch answers, context and summaries on the company's "
-                       f"policy and official documents.\n"
-                       f"ALWAYS use this tool FIRST to check and retrieve information based on user's query!")
-        # f"Available documents: {summary}")
 
         tools.append(
             QueryEngineTool(
                 query_engine=sub_qe,
                 metadata=ToolMetadata(
                     name="main_query_engine",
-                    description=description,
+                    description=MAIN_QUERY_ENGINE_PROMPT,
                 ),
             )
         )
 
-        tools.append(
-            FunctionTool.from_defaults(async_fn=query_sage_kb)
-        )
+    tools.append(
+        FunctionTool.from_defaults(async_fn=query_sage_kb)
+    )
+
+    sage_tools = build_sage_api_tools()
+    tools.extend(sage_tools)
 
     return tools
 
 
+def build_sage_api_tools():
+    sage_tools = []
+
+    async def _request_api(url, method="GET", data=None) -> Union[None, Dict[str, Any]]:
+        headers = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'X-Auth-Token': config.SAGE_HR_API_KEY
+        }
+        try:
+            resp = requests.request(method, url, headers=headers)
+            resp.raise_for_status()
+            return resp.json()
+        except HTTPError as e:
+            print(f"HTTPError requesting {url}: {e}")
+            return {
+                "error": f"HTTPError requesting {url}: {e}"
+            }
+        except Exception as e:
+            print(f"Other Exception requesting {url}: {e}")
+            return {
+                "error": f"Other Exception requesting {url}: {e}"
+            }
+
+    async def get_employee_name(employee_id: int) -> Union[str, Dict[str, Any]]:
+        """
+        Use this function to get the details of a single active employee in the company given the employee id.
+        :param employee_id: an integer value representing the employee
+        :return: a dictionary with the employee details.
+        """
+        url = f"{SAGE_BASE_URL}employees/{employee_id}"
+        json_resp = await _request_api(url)
+        if "error" in json_resp:
+            return json_resp["error"]
+
+        details = json_resp.get("data", {})
+        return {
+            "email": details.get("email"),
+            "first_name": details.get("first_name"),
+            "last_name": details.get("last_name"),
+            "position": details.get("position"),
+            "country": details.get("country"),
+        }
+
+    async def get_list_of_recently_terminated_employees(employee_name=None):
+        """
+        Use this function to fetch the list of recently terminated employees or to check for a particular terminated employee.
+        Can also be useful to check if an employee is still within in the company.
+        :param employee_name: (Optional) the employee name to filter list by.
+        :return: detailed list of recently terminated employees.
+        """
+        url = f"{SAGE_BASE_URL}terminated-employees"
+        json_resp = await _request_api(url)
+        if "error" in json_resp:
+            return json_resp["error"]
+
+        employees = []
+        data = json_resp.get("data", {})
+        employees.extend(data)
+        details = [
+            {
+                "email": details.get("email"),
+                "first_name": details.get("first_name"),
+                "last_name": details.get("last_name"),
+                "position": details.get("position"),
+                "country": details.get("country"),
+                "termination_date": details.get("termination_date")
+            } for details in employees
+        ]
+
+        if employee_name:
+            details = [
+                detail for detail in details if
+                employee_name.lower() in f'{detail["first_name"].lower()} {detail["last_name"].lower()}'
+            ]
+
+        return details
+
+    async def get_company_teams_list(team_name: str) -> Union[str, List[Dict[str, Any]]]:
+        """
+        Use this function to get the list of functional teams in the company.
+        :param team_name: string containing the requested team name.
+        :return: list of dictionary containing team names and a list of manager names.
+        """
+        url = f"{SAGE_BASE_URL}teams"
+        all_data = []
+
+        json_resp = await _request_api(url)
+        if "error" in json_resp:
+            return json_resp["error"]
+
+        all_data.extend(json_resp.get("data", []))
+        meta: dict[str, Any] = json_resp.get("meta", {})
+        if meta:
+            total_pages = meta.get("total_pages", 0)
+            current_page = meta.get("current_page", 0)
+            while current_page < total_pages:
+                url = f"{url}?page={int(current_page) + 1}"
+                json_resp = await _request_api(url)
+                all_data.extend(json_resp.get("data", []))
+
+                meta = json_resp.get("meta", {})
+                current_page = meta.get("current_page", 0)
+
+        all_data = [{
+            "team_id": data["id"],
+            "team_name": data["name"],
+            "managers": await asyncio.gather(*[get_employee_name(manager_id) for manager_id in data["manager_ids"]]),
+            "employees": await asyncio.gather(
+                *[get_employee_name(employee_id) for employee_id in data["employee_ids"]]),
+        } for data in all_data if team_name in data["name"]]
+        return all_data
+
+    sage_tools.append(
+        FunctionTool.from_defaults(async_fn=get_company_teams_list)
+    )
+
+    sage_tools.append(
+        FunctionTool.from_defaults(async_fn=get_list_of_recently_terminated_employees)
+    )
+
+    return sage_tools
+
+
 def build_document_agents(indices: List[BaseIndex]) -> Tuple[Dict[str, Dict[str, FunctionCallingAgent]], str]:
     print("Building document agents...")
-    summary_prompt = "Describe in depth, the topics covered in the document."
-    agents = {}  # Build agents dictionary
+    agents: Dict[str, Dict[str, FunctionCallingAgent | str]] = {}  # Build agents dictionary
     all_doc_names: str = ""
     for index in tqdm(indices):
         fname = "_".join(index.index_id.split("_")[:-2])
         fname = fname.strip().replace("(", "").replace(")", "").replace(".", "")
-        query_engine_tools: List[QueryEngineTool] = []
 
         if "FAQ" in fname:
-            continue
+            fname = "FAQ_document"
 
         if "summary_index" in index.index_id:
-            print(f"index_id: {index.index_id}, {index.index_struct}")
-            sqe = index.as_query_engine(llm=config.LLM, retriever_mode=ListRetrieverMode.EMBEDDING,
-                                        embed_model=config.EMBED_MODEL)
-            summary = self_retry(sqe.query, summary_prompt)
-            all_doc_names += f"- Document: {fname}, Summary: {summary}\n"
-
-            query_engine_tools.append(
-                QueryEngineTool(
-                    query_engine=sqe,
-                    metadata=ToolMetadata(
-                        name=f"{fname}_summary_tool",
-                        description=(
-                            f"Useful for summarization questions related to {fname}. \n"
-                        ),
-                    ),
-                )
+            agent, doc_names = build_single_agent(
+                index=index,
+                fname=fname
             )
-
-            # Get query engine for single document
-            vector_index = VectorStoreIndex.from_vector_store(
-                vector_store=config.VECTOR_STORE, embed_model=config.EMBED_MODEL
-            )
-            filters_ = [ExactMatchFilter(key="tag_name", value=fname)]  # specify the filter type
-            filters = MetadataFilters(
-                filters=filters_,
-                condition=FilterCondition.AND,
-            )
-            retriever = VectorIndexRetriever(
-                index=vector_index,
-                similarity_top_k=3,
-                filters=filters
-            )
-            rqe = RetrieverQueryEngine(
-                retriever=retriever
-            )
-
-            sub_qe = SubQuestionQueryEngine.from_defaults(
-                query_engine_tools=[
-                    QueryEngineTool(
-                        query_engine=rqe,
-                        metadata=ToolMetadata(
-                            name=f"{fname[:-5]}_base_vector_tool",
-                            description=(
-                                f"Useful for retrieving specific context from {fname}. \n"
-                            ),
-                        ),
-                    )
-                ],
-                use_async=True,
-                llm=config.LLM
-            )
-
-            query_engine_tools.append(
-                QueryEngineTool(
-                    query_engine=sub_qe,
-                    metadata=ToolMetadata(
-                        name=f"{fname[:-5]}_sub_vector_tool",
-                        description=(
-                            f"Useful for retrieving specific context from {fname}. \n"
-                        ),
-                    ),
-                )
-            )
-
-            # build agent
-            agent = FunctionCallingAgent.from_tools(
-                query_engine_tools,
-                llm=config.LLM,
-                verbose=True,
-                system_prompt=DOC_AGENT_SYSTEM_PROMPT.format(
-                    filename=fname,
-                    summary_tool=f"{fname}_summary_tool",
-                    vector_tool=f"{fname[:-5]}_sub_vector_tool"
-                )
-            )
-
-            agents[fname] = {
-                "agent": agent,
-                "summary": f"{summary}"
-            }
+            all_doc_names += doc_names
+            agents[fname] = agent
 
     return agents, all_doc_names
+
+
+def build_single_agent(index, fname=None, return_agent=True) -> Union[
+    Tuple[Dict[str, FunctionCallingAgent | str], str], List[QueryEngineTool]]:
+    if not fname:
+        fname = "_".join(index.index_id.split("_")[:-2])
+        fname = fname.strip().replace("(", "").replace(")", "").replace(".", "")
+
+    query_engine_tools: List[QueryEngineTool] = []
+    sqe = index.as_query_engine(llm=config.LLM, retriever_mode=ListRetrieverMode.EMBEDDING,
+                                embed_model=config.EMBED_MODEL)
+    summary = self_retry(sqe.query, DOC_SUMMARY_PROMPT)
+    all_doc_names = f"- Document: {fname}, Summary: {summary}\n"
+    print(f"index_id: {index.index_id}; fname: {fname}; Summary: {summary}")
+
+
+    query_engine_tools.append(
+        QueryEngineTool(
+            query_engine=sqe,
+            metadata=ToolMetadata(
+                name=f"{fname}_summary_tool",
+                description=(
+                    f"Utilize this response template to effectively answer summarization questions that relate to "
+                    f"the content of {fname}. This might involve distilling key points, highlighting main concepts, "
+                    f"or rephrasing complex information into concise and easily digestible summaries."
+                ),
+            ),
+        )
+    )
+
+    # Get query engine for single document
+    vector_index = VectorStoreIndex.from_vector_store(
+        vector_store=config.VECTOR_STORE, embed_model=config.EMBED_MODEL
+    )
+    filters_ = [ExactMatchFilter(key="tag_name", value=fname)]  # specify the filter type
+    filters = MetadataFilters(
+        filters=filters_,
+        condition=FilterCondition.AND,
+    )
+    retriever = VectorIndexRetriever(
+        index=vector_index,
+        similarity_top_k=3,
+        filters=filters
+    )
+    rqe = RetrieverQueryEngine(
+        retriever=retriever
+    )
+
+    question_gen = LLMQuestionGenerator.from_defaults(llm=config.LLM,
+                                                      prompt_template_str=CUSTOM_SUB_QUESTION_PROMPT_TMPL)
+    sub_qe = SubQuestionQueryEngine.from_defaults(
+        question_gen=question_gen,
+        query_engine_tools=[
+            QueryEngineTool(
+                query_engine=rqe,
+                metadata=ToolMetadata(
+                    name=f"{fname[:-5]}_base_vector_tool",
+                    description=(
+                        f"Leverage this tool to access specific information within the {fname}, enabling users to "
+                        f"quickly and accurately obtain context on similar topics or issues."
+                    ),
+                ),
+            )
+        ],
+        use_async=True,
+        llm=config.LLM
+    )
+
+    query_engine_tools.append(
+        QueryEngineTool(
+            query_engine=sub_qe,
+            metadata=ToolMetadata(
+                name=f"{fname[:-5]}_sub_vector_tool",
+                description=(
+                    f"Leverage this tool to access specific information within the {fname}, enabling users to quickly "
+                    f"and accurately obtain context on similar topics or issues."
+                ),
+            ),
+        )
+    )
+
+    if return_agent:
+        # build agent
+        agent = FunctionCallingAgent.from_tools(
+            query_engine_tools,
+            llm=config.LLM,
+            verbose=True,
+            system_prompt=DOC_AGENT_SYSTEM_PROMPT.format(
+                filename=fname,
+                summary_tool=f"{fname}_summary_tool",
+                vector_tool=f"{fname[:-5]}_sub_vector_tool"
+            )
+        )
+
+        return {
+            "agent": agent,
+            "summary": f"{summary}"
+        }, all_doc_names
+
+    else:
+        faq_description = ("This FAQ document provides answers to common questions related to workplace policies and "
+                           "technical support. Here are the key topics: Onboarding & Documentation, Payroll & Benefits "
+                           "Work Hours & Leave Policies, Probation & Performance Evaluation, and many more.")
+        return [
+            QueryEngineTool(
+                query_engine=sqe,
+                metadata=ToolMetadata(
+                    name=f"{fname}_summary_tool",
+                    description=(
+                        f"Use this tool to get summaries about the FAQ document {fname}. {summary}"
+                    ),
+                ),
+            ),
+            QueryEngineTool(
+                query_engine=sub_qe,
+                metadata=ToolMetadata(
+                    name=f"{fname[:-5]}_sub_vector_tool",
+                    description=(
+                        f"Use this tool to get specific FAQ context from {fname}. {summary}"
+                    ),
+                ),
+            )
+        ]
 
 
 def build_agent_objects(agents_dict: Dict[str, Dict[str, FunctionCallingAgent]]):
     objects = []
     for agent_label in agents_dict:
         # define index node that links to these agents
-        policy_summary = (
-            f"This content contains company policy documents about {agent_label}. Use"
-            " this index if you need to lookup specific facts about: "
-            f"{agents_dict[agent_label]['summary']}."
-            f"\nDo not use this index if you want to analyze multiple documents."
-        )
+        policy_summary = f"""
+        This content contains company documents related to {agent_label}. 
+        Summary: {agents_dict[agent_label]['summary']}
+        These tool provide comprehensive information about {agent_label} and is intended for:
+        - Referencing specific facts and guidelines outlined in the document.
+        - Retrieving supporting context and evidence.
+        
+        Important: Please note that this index should be used when you need to look up detailed information on a specific topic or section within the documents. 
+        """
         node = IndexNode(
-            text=policy_summary, index_id=f"{agent_label}_agent_object", obj=agents_dict[agent_label]["agent"]
+            text=agents_dict[agent_label]['summary'], index_id=f"{agent_label}_agent_object", obj=agents_dict[agent_label]["agent"]
         )
         objects.append(node)
 
@@ -190,7 +370,7 @@ def build_agent_objects(agents_dict: Dict[str, Dict[str, FunctionCallingAgent]])
     vector_index = VectorStoreIndex(
         objects=objects,
     )
-    objects_query_engine = vector_index.as_query_engine(similarity_top_k=1, verbose=True)
+    objects_query_engine = vector_index.as_query_engine(similarity_top_k=2, verbose=True)
     return objects_query_engine
 
 
@@ -215,8 +395,15 @@ def build_sub_question_qe(objects_query_engine):
         QueryEngineTool(
             query_engine=objects_query_engine,
             metadata=ToolMetadata(
-                name="policy_engine",
-                description="Useful for getting context on different company policy documents.",
+                name="company_and_document_engine_vector_tool",
+                description=("This tool is particularly useful for: "
+                             "- Quickly obtaining concise summaries of various company policies and procedures. \n"
+                             "- Gaining specific context or insights related to particular company documents, such as "
+                             "employee handbooks, benefit guides, or regulatory compliance materials. \n"
+                             "- Finding answers to frequently asked questions about company policies and practices. \n"
+                             "- Streamlining the process of researching and understanding complex company information.\n"
+                             "- Enhancing overall knowledge of a company's policies and procedures for employees, "
+                             "partners, or stakeholders.")
             ),
         ),
     ]
@@ -224,7 +411,7 @@ def build_sub_question_qe(objects_query_engine):
     sub_query_engine = SubQuestionQueryEngine.from_defaults(
         query_engine_tools=query_engine_tools,
         use_async=True,
-        llm=config.LLM
+        llm=config.LLM,
     )
     return sub_query_engine
 
