@@ -111,6 +111,7 @@ class Config:
         "client_x509_cert_url": G_CLIENT_CERT_URI,
         "universe_domain": "googleapis.com"
     }
+    SAGE_HR_API_KEY = os.environ.get("SAGE_HR_API_KEY")
 
 
 config = Config()

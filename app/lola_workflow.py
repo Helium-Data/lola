@@ -1,5 +1,5 @@
 import asyncio
-from typing import Any, List, Union, Dict
+from typing import Any, List
 import time
 
 from llama_index.core.llms import ChatMessage, MessageRole
@@ -88,7 +88,7 @@ class LolaAgent(Workflow):
 
         # get user input
         user_input = ev.input
-        user_input += "\n (use the 'main_query_engine' tool or 'query_sage_kb' tool or both tools to answer.)"
+        # user_input += "\n (use the 'main_query_engine' tool or 'query_sage_kb' tool or both tools to answer.)"
         user_msg = ChatMessage(role="user", content=user_input)
         memory.put(user_msg)
         await ctx.set("query_str", user_input)
