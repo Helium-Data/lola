@@ -48,7 +48,8 @@ def prepare_tools() -> List[BaseTool] | None:
     indices = load_indices_from_storage(
         storage_context=config.STORAGE_CONTEXT
     )
-    print(f"{len(indices)}: {[ind.index_id for ind in indices]}")
+    indices_index_ids = [ind.index_id for ind in indices]
+    print(f"{len(indices)}: {indices_index_ids}")
 
     try:
         doc_vec_index = load_index_from_storage(
@@ -57,8 +58,14 @@ def prepare_tools() -> List[BaseTool] | None:
     except ValueError:
         doc_vec_index = None
 
+    new_indices = get_doc_vector_indices(
+        doc_vec_index=doc_vec_index,
+        indices_index_ids=indices_index_ids
+    )
+    print(f"{len(new_indices)}: {new_indices}")
+
     if indices:
-        if doc_vec_index is None:
+        if doc_vec_index is None or len(new_indices) > 0:
             # Build tools
             agents, summary = build_document_agents(indices)
             obj_qe = build_agent_objects(agents)
@@ -86,6 +93,32 @@ def prepare_tools() -> List[BaseTool] | None:
 
     return tools
 
+
+def get_doc_vector_indices(doc_vec_index, indices_index_ids):
+    structs_node_ids = list(doc_vec_index.index_struct.to_dict()["nodes_dict"].keys())
+
+    struct_docs = []
+    for ids in structs_node_ids:
+        try:
+            struct_id = config.DOC_STORE.get_node(ids, raise_error=False)
+            struct_docs.append(struct_id)
+        except ValueError:
+            print(f"Struct ID error: {ids}")
+
+    doc_vec_index_ids = [
+        doc.to_dict()["index_id"].split("_")[0]
+        for doc in struct_docs
+    ]
+
+    new_indices = []
+    for idx in indices_index_ids:
+        if idx in ["doc_agent_vector_store", "For_LolaHR_-_FAQs_Document_summary_index"]:
+            continue
+
+        if idx.split("_")[0] not in doc_vec_index_ids:
+            new_indices.append(idx)
+
+    return new_indices
 
 def build_sage_api_tools():
     sage_tools = []
