@@ -235,7 +235,11 @@ class LolaAgent(Workflow):
             new_chat_history += f"\n'{role}': {chat.content.strip()}"
 
         response = await self.response_pipeline.arun(conversation=new_chat_history, answer=answer)
-        print(f"Chat: {response.message}")
+        response_message = str(response.message)
+
+        if "warm regards" in response_message.lower():
+            string_list = response_message.split("\n")
+            response_message = "\n".join(string_list[:-2])
 
         # save the final response
         memory = await ctx.get("memory")
@@ -243,7 +247,7 @@ class LolaAgent(Workflow):
         await ctx.set("memory", memory)
 
         sources = await ctx.get("sources", default=[])
-        return StopEvent(result={"response": response, "sources": [*sources]})
+        return StopEvent(result={"response": response_message, "sources": [*sources]})
 
 
 def initialize_workflow(visualize_workflow=False) -> LolaAgent:
