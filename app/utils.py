@@ -19,6 +19,7 @@ from llama_index.core.schema import IndexNode
 from llama_index.core.agent import FunctionCallingAgent
 from llama_index.core.indices.base import BaseIndex
 from llama_index.core.query_engine import RouterQueryEngine
+from llama_index.core.node_parser import SemanticSplitterNodeParser
 from llama_index.core.selectors import LLMSingleSelector, LLMMultiSelector
 from llama_index.core.question_gen.llm_generators import LLMQuestionGenerator
 from llama_index.core.query_engine import SubQuestionQueryEngine, RetrieverQueryEngine
@@ -48,20 +49,27 @@ def prepare_tools() -> List[BaseTool] | None:
         storage_context=config.STORAGE_CONTEXT
     )
     print(f"{len(indices)}: {[ind.index_id for ind in indices]}")
-    faq_index = load_index_from_storage(
-        storage_context=config.STORAGE_CONTEXT, index_id="For_LolaHR_-_FAQs_Document_summary_index"
-    )
+
+    try:
+        doc_vec_index = load_index_from_storage(
+            storage_context=config.STORAGE_CONTEXT, index_id="doc_agent_vector_store"
+        )
+    except ValueError:
+        doc_vec_index = None
 
     if indices:
-        # Build tools
-        agents, summary = build_document_agents(indices)
-        obj_qe = build_agent_objects(agents)
-        # rqe_tool = build_router_engine(query_engine_tools)
-        sub_qe = build_sub_question_qe(obj_qe)  # Optional: build sub question query engine
+        if doc_vec_index is None:
+            # Build tools
+            agents, summary = build_document_agents(indices)
+            obj_qe = build_agent_objects(agents)
+            # sub_qe = build_sub_question_qe(obj_qe)  # Optional: build sub question query engine for doc agent router
+        else:
+            # Load doc agent vector index from storage
+            obj_qe = doc_vec_index.as_query_engine(similarity_top_k=2, verbose=True)
 
         tools.append(
             QueryEngineTool(
-                query_engine=sub_qe,
+                query_engine=obj_qe,
                 metadata=ToolMetadata(
                     name="main_query_engine",
                     description=MAIN_QUERY_ENGINE_PROMPT,
@@ -160,9 +168,12 @@ def build_sage_api_tools():
     async def get_company_teams_list(team_name: str) -> Union[str, List[Dict[str, Any]]]:
         """
         Use this function to get the list of functional teams in the company.
-        :param team_name: string containing the requested team name.
+        :param team_name: string containing the requested team name. E.g. "Data", "Public Health", "Product Management", "Operations & Strategy"
         :return: list of dictionary containing team names and a list of manager names.
         """
+        if "team" in team_name:
+            team_name = team_name.replace("team", "").strip()
+
         url = f"{SAGE_BASE_URL}teams"
         all_data = []
 
@@ -190,6 +201,10 @@ def build_sage_api_tools():
             "employees": await asyncio.gather(
                 *[get_employee_name(employee_id) for employee_id in data["employee_ids"]]),
         } for data in all_data if team_name in data["name"]]
+
+        if not all_data:
+            return f"Cannot find team with team name: {team_name}"
+
         return all_data
 
     sage_tools.append(
@@ -225,7 +240,7 @@ def build_document_agents(indices: List[BaseIndex]) -> Tuple[Dict[str, Dict[str,
     return agents, all_doc_names
 
 
-def build_single_agent(index, fname=None, return_agent=True) -> Union[
+def build_single_agent(index: BaseIndex, fname=None, return_agent=True) -> Union[
     Tuple[Dict[str, FunctionCallingAgent | str], str], List[QueryEngineTool]]:
     if not fname:
         fname = "_".join(index.index_id.split("_")[:-2])
@@ -233,11 +248,10 @@ def build_single_agent(index, fname=None, return_agent=True) -> Union[
 
     query_engine_tools: List[QueryEngineTool] = []
     sqe = index.as_query_engine(llm=config.LLM, retriever_mode=ListRetrieverMode.EMBEDDING,
-                                embed_model=config.EMBED_MODEL)
+                                embed_model=config.EMBED_MODEL, choice_batch_size=3, similarity_top_k=3)
     summary = self_retry(sqe.query, DOC_SUMMARY_PROMPT)
     all_doc_names = f"- Document: {fname}, Summary: {summary}\n"
     print(f"index_id: {index.index_id}; fname: {fname}; Summary: {summary}")
-
 
     query_engine_tools.append(
         QueryEngineTool(
@@ -362,14 +376,23 @@ def build_agent_objects(agents_dict: Dict[str, Dict[str, FunctionCallingAgent]])
         Important: Please note that this index should be used when you need to look up detailed information on a specific topic or section within the documents. 
         """
         node = IndexNode(
-            text=agents_dict[agent_label]['summary'], index_id=f"{agent_label}_agent_object", obj=agents_dict[agent_label]["agent"]
+            text=agents_dict[agent_label]['summary'], index_id=f"{agent_label}_agent_object",
+            obj=agents_dict[agent_label]["agent"]
         )
         objects.append(node)
 
     # define top-level retriever
     vector_index = VectorStoreIndex(
         objects=objects,
+        transformations=[
+            SemanticSplitterNodeParser.from_defaults(
+                embed_model=config.EMBED_MODEL
+            )
+        ],
+        storage_context=config.STORAGE_CONTEXT
     )
+    vector_index.set_index_id("doc_agent_vector_store")
+    print(vector_index.index_struct)
     objects_query_engine = vector_index.as_query_engine(similarity_top_k=2, verbose=True)
     return objects_query_engine
 

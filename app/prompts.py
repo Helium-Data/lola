@@ -147,4 +147,4 @@ RELEVANCY_PROMPT_TEMPLATE = PromptTemplate(
 
     Please provide your value and reason ('yes', 'no' or 'more') below to indicate the document's relevance to the user question."""
 )
-DOC_SUMMARY_PROMPT = "Describe in depth, the topics covered in the document."
+DOC_SUMMARY_PROMPT = "List and summarize in depth, ALL the topics covered in the documents that make the document easily searchable."  # List and summarize in depth, ALL the topics covered in the documents that make the document easily searchable.
