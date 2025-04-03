@@ -95,6 +95,9 @@ def prepare_tools() -> List[BaseTool] | None:
 
 
 def get_doc_vector_indices(doc_vec_index, indices_index_ids):
+    if doc_vec_index is None:
+        return []
+
     structs_node_ids = list(doc_vec_index.index_struct.to_dict()["nodes_dict"].keys())
 
     struct_docs = []
