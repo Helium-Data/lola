@@ -56,7 +56,7 @@ class LolaIngestionPipeline:
         transformations=TRANSFORMATIONS,
         docstore=config.DOC_STORE,
         cache=config.CACHE,
-        docstore_strategy=DocstoreStrategy.UPSERTS,
+        docstore_strategy=DocstoreStrategy.DUPLICATES_ONLY,
         vector_store=config.VECTOR_STORE
     )
     EXTS = [".pdf", ".docx"]
