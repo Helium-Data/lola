@@ -58,6 +58,7 @@ class LolaAgent(Workflow):
     ) -> None:
         super().__init__(*args, **kwargs)
         self.tools = tools or []
+        self.memory_token_limit = 30000
 
         self.llm = llm
         self.chat_llm = llm
@@ -81,14 +82,14 @@ class LolaAgent(Workflow):
         await ctx.set("memory", None)
         memory = ChatMemoryBuffer.from_defaults(
             llm=self.llm,
-            token_limit=3000,
+            token_limit=self.memory_token_limit,
             chat_store=config.CHAT_STORE,
             chat_store_key=session_id,
         )
 
         # get user input
         user_input = ev.input
-        user_input += "\n (use one or all tools to answer)"
+        user_input += "\n (USE at least ONE tool to answer query.)"
         user_msg = ChatMessage(role="user", content=user_input)
         memory.put(user_msg)
         await ctx.set("query_str", user_input)
