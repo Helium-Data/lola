@@ -5,7 +5,9 @@ from llama_index.core.question_gen.types import SubQuestion
 from llama_index.core.tools.types import ToolMetadata
 from llama_index.core.question_gen.prompts import build_tools_text
 
-MAIN_QUERY_ENGINE_PROMPT = (f"Use this tool to fetch answers, context and summaries about the company's "
+MAIN_QUERY_ENGINE_DESCRIPTION = (f"Use this tool to fetch answers, context and summaries about the company's "
+                            f"policies and official documents.")
+FAQ_QUERY_ENGINE_DESCRIPTION = (f"Use this tool to fetch answers to frequently asked questions about the company's "
                             f"policies and official documents.")
 
 PREFIX = """\
@@ -20,7 +22,7 @@ example_query_str = (
 example_tools = [
     ToolMetadata(
         name="main_query_engine",
-        description=MAIN_QUERY_ENGINE_PROMPT,
+        description=MAIN_QUERY_ENGINE_DESCRIPTION,
     )
 ]
 example_tools_str = build_tools_text(example_tools)
