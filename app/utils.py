@@ -29,8 +29,10 @@ from llama_index.core.vector_stores import ExactMatchFilter, FilterCondition, Me
 
 import gspread
 from .config import config
-from .prompts import DOC_AGENT_SYSTEM_PROMPT, DOC_SUMMARY_PROMPT, MAIN_QUERY_ENGINE_PROMPT, \
-    CUSTOM_SUB_QUESTION_PROMPT_TMPL
+from .prompts import (
+    DOC_AGENT_SYSTEM_PROMPT, DOC_SUMMARY_PROMPT, MAIN_QUERY_ENGINE_DESCRIPTION,
+    CUSTOM_SUB_QUESTION_PROMPT_TMPL, FAQ_QUERY_ENGINE_DESCRIPTION
+)
 
 nest_asyncio.apply()
 SAGE_BASE_URL = "https://heliumhealthnigeria.sage.hr/api/"
@@ -55,8 +57,12 @@ def prepare_tools() -> List[BaseTool] | None:
         doc_vec_index = load_index_from_storage(
             storage_context=config.STORAGE_CONTEXT, index_id="doc_agent_vector_store"
         )
+        faq_doc_vec_index = load_index_from_storage(
+            storage_context=config.STORAGE_CONTEXT, index_id="faq_doc_agent_vector_store"
+        )
     except ValueError:
         doc_vec_index = None
+        faq_doc_vec_index = None
 
     new_indices = get_doc_vector_indices(
         doc_vec_index=doc_vec_index,
@@ -68,18 +74,28 @@ def prepare_tools() -> List[BaseTool] | None:
         if doc_vec_index is None or len(new_indices) > 0:
             # Build tools
             agents, summary = build_document_agents(indices)
-            obj_qe = build_agent_objects(agents)
+            obj_qe, faq_obj_qe = build_agent_objects(agents)
             # sub_qe = build_sub_question_qe(obj_qe)  # Optional: build sub question query engine for doc agent router
         else:
             # Load doc agent vector index from storage
             obj_qe = doc_vec_index.as_query_engine(similarity_top_k=2, verbose=True)
+            faq_obj_qe = faq_doc_vec_index.as_query_engine(similalrity=1, verbose=True)
 
         tools.append(
             QueryEngineTool(
                 query_engine=obj_qe,
                 metadata=ToolMetadata(
                     name="main_query_engine",
-                    description=MAIN_QUERY_ENGINE_PROMPT,
+                    description=MAIN_QUERY_ENGINE_DESCRIPTION,
+                ),
+            )
+        )
+        tools.append(
+            QueryEngineTool(
+                query_engine=faq_obj_qe,
+                metadata=ToolMetadata(
+                    name="faq_query_engine",
+                    description=FAQ_QUERY_ENGINE_DESCRIPTION,
                 ),
             )
         )
@@ -122,6 +138,7 @@ def get_doc_vector_indices(doc_vec_index, indices_index_ids):
             new_indices.append(idx)
 
     return new_indices
+
 
 def build_sage_api_tools():
     sage_tools = []
@@ -399,7 +416,7 @@ def build_single_agent(index: BaseIndex, fname=None, return_agent=True) -> Union
 
 
 def build_agent_objects(agents_dict: Dict[str, Dict[str, FunctionCallingAgent]]):
-    objects = []
+    objects, faq_objects = [], []
     for agent_label in agents_dict:
         # define index node that links to these agents
         policy_summary = f"""
@@ -415,7 +432,10 @@ def build_agent_objects(agents_dict: Dict[str, Dict[str, FunctionCallingAgent]])
             text=agents_dict[agent_label]['summary'], index_id=f"{agent_label}_agent_object",
             obj=agents_dict[agent_label]["agent"]
         )
-        objects.append(node)
+        if "faq" in agent_label.lower():
+            faq_objects.append(node)
+        else:
+            objects.append(node)
 
     # define top-level retriever
     vector_index = VectorStoreIndex(
@@ -427,10 +447,23 @@ def build_agent_objects(agents_dict: Dict[str, Dict[str, FunctionCallingAgent]])
         ],
         storage_context=config.STORAGE_CONTEXT
     )
+
+    faq_vector_index = VectorStoreIndex(
+        objects=faq_objects,
+        transformations=[
+            SemanticSplitterNodeParser.from_defaults(
+                embed_model=config.EMBED_MODEL
+            )
+        ],
+        storage_context=config.STORAGE_CONTEXT
+    )
+
     vector_index.set_index_id("doc_agent_vector_store")
-    print(vector_index.index_struct)
+    faq_vector_index.set_index_id("faq_doc_agent_vector_store")
+
     objects_query_engine = vector_index.as_query_engine(similarity_top_k=2, verbose=True)
-    return objects_query_engine
+    faq_objects_query_engine = faq_vector_index.as_query_engine(similarity_top_k=1, verbose=True)
+    return objects_query_engine, faq_objects_query_engine
 
 
 def build_router_engine(query_engine_tools):
