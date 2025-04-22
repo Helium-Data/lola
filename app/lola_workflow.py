@@ -242,6 +242,9 @@ class LolaAgent(Workflow):
             string_list = response_message.split("\n")
             response_message = "\n".join(string_list[:-2])
 
+        if "cakehr" in response_message.lower():
+            response_message = response_message.replace("CakeHR", "SageHR")
+
         # save the final response
         memory = await ctx.get("memory")
         memory.put(response.message)
