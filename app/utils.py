@@ -279,8 +279,8 @@ def build_document_agents(indices: List[BaseIndex]) -> Tuple[Dict[str, Dict[str,
         fname = "_".join(index.index_id.split("_")[:-2])
         fname = fname.strip().replace("(", "").replace(")", "").replace(".", "")
 
-        if "FAQ" in fname:
-            fname = "FAQ_document"
+        # if "FAQ" in fname:
+        #     fname = "FAQ_document"
 
         if "summary_index" in index.index_id:
             agent, doc_names = build_single_agent(

@@ -289,4 +289,3 @@ if __name__ == '__main__':
                         type=str)
     args = parser.parse_args()
     asyncio.run(run_agent(str(args.query)))
-#     python app/lola_workflow.py "What are the eligibility criteria for transport allowance?"
