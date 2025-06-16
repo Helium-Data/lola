@@ -249,4 +249,4 @@ if __name__ == '__main__':
     nest_asyncio.apply()
     ingestor = LolaIngestionPipeline()
     details = asyncio.run(ingestor.run_ingestion())
-    print("Details: ", details)
+    print("Details -> ", details)
