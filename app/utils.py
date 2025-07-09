@@ -7,7 +7,7 @@ import requests
 from llama_index.core.indices.list.base import ListRetrieverMode
 from requests import HTTPError
 from tqdm import tqdm
-from typing import Dict, List, Union, Tuple, Any
+from typing import Dict, List, Union, Tuple, Any, Optional
 from llama_index.core import (
     VectorStoreIndex,
     load_indices_from_storage, Document, Response,
@@ -166,9 +166,26 @@ def build_sage_api_tools():
 
     async def get_employee_name(employee_id: int) -> Union[str, Dict[str, Any]]:
         """
-        Use this function to get the details of a single active employee in the company given the employee id.
-        :param employee_id: an integer value representing the employee
-        :return: a dictionary with the employee details.
+        Use this tool to retrieve basic profile information about a single **active** employee,
+        given their unique employee ID. The data returned includes non-sensitive identifying details
+        such as the employee’s name, email, position, and country of work.
+
+        Important:
+        - This tool should only be used to retrieve **basic public-facing or role-related information**
+          about employees within the company.
+        - It will not return details for deactivated or former employees.
+        - Do not use this tool to fetch sensitive HR data (e.g., salary, personal identifiers, or performance records).
+
+        Parameters:
+        - employee_id (int): The unique numerical ID of the employee.
+        Returns:
+        - A dictionary containing:
+            - `first_name`
+            - `last_name`
+            - `email`
+            - `position`
+            - `country`
+          Or a string error message if the employee is not found or inactive.
         """
         url = f"{SAGE_BASE_URL}employees/{employee_id}"
         json_resp = await _request_api(url)
@@ -186,10 +203,26 @@ def build_sage_api_tools():
 
     async def get_list_of_recently_terminated_employees(employee_name=None):
         """
-        Use this function to fetch the list of recently terminated employees or to check for a particular terminated employee.
-        Can also be useful to check if an employee is still within in the company.
-        :param employee_name: (Optional) the employee name to filter list by.
-        :return: detailed list of recently terminated employees.
+        Use this tool to retrieve a list of employees who have recently been terminated from the company.
+        This can be used to verify if a specific employee has been offboarded or to fetch the full list
+        of recent terminations for auditing or reporting purposes.
+
+        Important:
+        - This tool should only be used for retrieving official termination records.
+        - It can also be used to check if an employee is no longer with the company.
+        - It does **not** return information about current or active employees unless cross-checked manually.
+
+        Parameters:
+        - employee_name (str, optional): An optional full or partial name to filter the list by a specific individual.
+        Returns:
+        - A list of terminated employee records, each including:
+            - first name
+            - last name
+            - email
+            - position
+            - country
+            - termination date
+          If an employee name is provided, the results will be filtered accordingly.
         """
         url = f"{SAGE_BASE_URL}terminated-employees"
         json_resp = await _request_api(url)
@@ -218,14 +251,35 @@ def build_sage_api_tools():
 
         return details
 
-    async def get_company_teams_list(team_name: str) -> Union[str, List[Dict[str, Any]]]:
+    async def get_company_teams_list(
+            team_name: Optional[str] = None,
+            page: int = 1,
+            page_size: int = 10
+    ) -> Union[str, List[Dict[str, Any]]]:
         """
-        Use this function to get the list of functional teams in the company.
-        :param team_name: string containing the requested team name. E.g. "Data", "Public Health", "Product Management", "Operations & Strategy"
-        :return: list of dictionary containing team names and a list of manager names.
+        Use this tool to retrieve information about a specific functional team within the company.
+        It returns details about the requested team including the team name, list of managers, and employees.
+
+        Important:
+        - The tool supports pagination. Use the `page` and `page_size` parameters to control results.
+        - Partial matches on `team_name` are supported (e.g., "Product" will match "Product Management").
+        - This function queries internal organizational data.
+
+        Parameters:
+        - team_name (str, optional): Name or partial name of the team (e.g., "Operations", "Product", None).
+        - page (int, optional): The page number of results to return (default: 1).
+        - page_size (int, optional): The number of teams per page (default: 10)
+        Returns:
+        - A list of dictionaries. Each dictionary contains:
+            - team_id (str): Unique identifier of the team.
+            - team_name (str): Name of the team.
+            - managers (List[str]): Names of managers in the team.
+            - employees (List[str]): Names of employees in the team.
+        - If no teams match the name, returns a message indicating no results.
         """
-        if "team" in team_name:
-            team_name = team_name.replace("team", "").strip()
+
+        if team_name and "team" in team_name.lower():
+            team_name = team_name.lower().replace("team", "").strip()
 
         url = f"{SAGE_BASE_URL}teams"
         all_data = []
@@ -240,25 +294,50 @@ def build_sage_api_tools():
             total_pages = meta.get("total_pages", 0)
             current_page = meta.get("current_page", 0)
             while current_page < total_pages:
-                url = f"{url}?page={int(current_page) + 1}"
-                json_resp = await _request_api(url)
+                current_page += 1
+                next_url = f"{url}?page={current_page}"
+                json_resp = await _request_api(next_url)
                 all_data.extend(json_resp.get("data", []))
-
                 meta = json_resp.get("meta", {})
-                current_page = meta.get("current_page", 0)
+                current_page = meta.get("current_page", current_page)
 
-        all_data = [{
-            "team_id": data["id"],
-            "team_name": data["name"],
-            "managers": await asyncio.gather(*[get_employee_name(manager_id) for manager_id in data["manager_ids"]]),
-            "employees": await asyncio.gather(
-                *[get_employee_name(employee_id) for employee_id in data["employee_ids"]]),
-        } for data in all_data if team_name in data["name"]]
+        # Filter by team name if provided
+        if team_name:
+            filtered_teams = [
+                data for data in all_data if team_name.lower() in data["name"].lower()
+            ]
+        else:
+            filtered_teams = all_data
 
-        if not all_data:
-            return f"Cannot find team with team name: {team_name}"
+        if not filtered_teams:
+            return f"No teams found matching: {team_name}" if team_name else "No teams available."
 
-        return all_data
+        # Apply pagination
+        start_idx = (page - 1) * page_size
+        end_idx = start_idx + page_size
+        paginated_teams = filtered_teams[start_idx:end_idx]
+
+        # Enrich team data
+        enriched_teams = []
+        for data in paginated_teams:
+            managers = await asyncio.gather(
+                *[get_employee_name(mid) for mid in data.get("manager_ids", [])]
+            )
+            employees = await asyncio.gather(
+                *[get_employee_name(eid) for eid in data.get("employee_ids", [])]
+            )
+            enriched_teams.append({
+                "team_id": data["id"],
+                "team_name": data["name"],
+                "managers": managers,
+                "employees": employees,
+            })
+
+        return enriched_teams
+
+    sage_tools.append(
+        FunctionTool.from_defaults(async_fn=get_employee_name)
+    )
 
     sage_tools.append(
         FunctionTool.from_defaults(async_fn=get_company_teams_list)
@@ -673,15 +752,23 @@ def build_vector_index(documents):
 
 async def query_sage_kb(query: str) -> Union[Response, None]:
     """
-    This function utilizes the SageHR search functionality to extract relevant content related to application use, troubleshooting, and support.
-    The information returned may include guides for common issues, step-by-step instructions, and links to additional
-    resources such as FAQs, user manuals, or contact information for support teams.
-    Query must be at least 2 words.
+    Use this tool to search the SageHR public support knowledge base for user-facing help articles.
+    It returns documentation relevant to application usage, troubleshooting, configuration guidance, and
+    frequently asked questions. This includes step-by-step instructions, feature explanations, and links
+    to relevant help resources.
 
-    :param query: The relevant search query, minimum of 2 words.
-    :return: A Response object containing the query results, or None if no results found.
+    Important:
+    - This tool is intended **only** for retrieving public support content about the SageHR product.
+    - It should **not** be used to look up internal company information, employee data, or proprietary staff records.
+    - The query must be at least two words to ensure meaningful search results.
+
+    Parameters:
+    - query (str): A user query describing the support issue or information need (e.g., "reset password",
+      "leave approval workflow").
+    Returns:
+    - A Response object containing relevant support documentation, or None if no results are found.
     """
-    print("Quering SageKB")
+    print("Querying SageKB")
     sage_kb_search_url = f"https://support.sage.hr/en/?q={query.replace(' ', '+')}"
     search_results_raw = await get_request(sage_kb_search_url)
     if not search_results_raw:
