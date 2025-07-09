@@ -263,6 +263,7 @@ def build_sage_api_tools():
         Important:
         - The tool supports pagination. Use the `page` and `page_size` parameters to control results.
         - Partial matches on `team_name` are supported (e.g., "Product" will match "Product Management").
+        - team_name query should be words not initials (e.g., "Human Resources" instead of "HR").
         - This function queries internal organizational data.
 
         Parameters:
