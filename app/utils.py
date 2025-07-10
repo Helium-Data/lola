@@ -4,6 +4,7 @@ import asyncio
 import pandas as pd
 import nest_asyncio
 import requests
+from rapidfuzz import fuzz
 from llama_index.core.indices.list.base import ListRetrieverMode
 from requests import HTTPError
 from tqdm import tqdm
@@ -141,8 +142,6 @@ def get_doc_vector_indices(doc_vec_index, indices_index_ids):
 
 
 def build_sage_api_tools():
-    sage_tools = []
-
     async def _request_api(url, method="GET", data=None) -> Union[None, Dict[str, Any]]:
         headers = {
             'Content-Type': 'application/json',
@@ -336,17 +335,101 @@ def build_sage_api_tools():
 
         return enriched_teams
 
-    sage_tools.append(
-        FunctionTool.from_defaults(async_fn=get_employee_name)
-    )
+    async def find_employee_by_name(name: str, threshold: int = 80) -> List[Dict[str, Any]]:
+        """
+        Use this tool to search for employees by their full name (first name + last name). It returns detailed
+        employee information including contact info, team, position, and employment status.
 
-    sage_tools.append(
-        FunctionTool.from_defaults(async_fn=get_company_teams_list)
-    )
+        Parameters:
+        - name (str): Partial or full name of the employee to search for.
+          Example: "John Doe", "Jane", "Adeola Smith"
+        Returns:
+        - A list of matching employee records, each as a dictionary. If no match is found, returns an empty list.
+        """
 
-    sage_tools.append(
-        FunctionTool.from_defaults(async_fn=get_list_of_recently_terminated_employees)
-    )
+        matches = []
+        page = 1
+        has_more = True
+
+        while has_more:
+            url = f"{SAGE_BASE_URL}employees?page={page}"
+            response = await _request_api(url)
+
+            if "error" in response:
+                break  # Optionally raise an exception or return error
+
+            employees = response.get("data", [])
+            for employee in employees:
+                full_name = f"{employee.get('first_name', '')} {employee.get('last_name', '')}".strip().lower()
+                if name.lower() in full_name:
+                    matches.append(employee)
+                else:
+                    match_score = fuzz.token_set_ratio(name, full_name)
+                    if match_score >= threshold:
+                        matches.append(employee)
+
+            meta = response.get("meta", {})
+            current_page = meta.get("current_page", page)
+            total_pages = meta.get("total_pages", current_page)
+            has_more = current_page < total_pages
+            page += 1
+
+        return matches
+
+    async def find_employee_by_role(role: str, threshold: int = 80) -> List[Dict[str, Any]]:
+        """
+        Use this tool to retrieve employees whose job titles match a given role using fuzzy matching.
+        It returns detailed employee records including position, team, and contact information.
+
+        Parameters:
+        - role (str): The job title or partial role to search for. Example: "Product Manager", "Engineer".
+        - threshold (int, optional): Fuzzy match score threshold (0–100). Defaults to 80.
+          Only employees whose position title matches the role above this threshold are returned.
+        Returns:
+        - A list of dictionaries for matching employees. Each dictionary includes employee details and their match score.
+          If no match is found, returns an empty list.
+        """
+
+        matches = []
+        page = 1
+        has_more = True
+        role = role.strip().lower()
+
+        while has_more:
+            url = f"{SAGE_BASE_URL}employees?page={page}"
+            response = await _request_api(url)
+
+            if "error" in response:
+                break
+
+            employees = response.get("data", [])
+            for employee in employees:
+                position = employee.get("position", "")
+                if not position:
+                    continue
+
+                match_score = fuzz.token_set_ratio(role, position.lower())
+                if match_score >= threshold:
+                    matches.append({
+                        **employee,
+                        "match_score": match_score
+                    })
+
+            meta = response.get("meta", {})
+            current_page = meta.get("current_page", page)
+            total_pages = meta.get("total_pages", current_page)
+            has_more = current_page < total_pages
+            page += 1
+
+        return matches
+
+    sage_tools = [
+        FunctionTool.from_defaults(async_fn=get_employee_name),
+        FunctionTool.from_defaults(async_fn=get_company_teams_list),
+        FunctionTool.from_defaults(async_fn=get_list_of_recently_terminated_employees),
+        FunctionTool.from_defaults(async_fn=find_employee_by_name),
+        FunctionTool.from_defaults(async_fn=find_employee_by_role)
+    ]
 
     return sage_tools
 
