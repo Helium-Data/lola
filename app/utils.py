@@ -425,7 +425,7 @@ def build_sage_api_tools():
 
     sage_tools = [
         FunctionTool.from_defaults(async_fn=get_employee_name),
-        FunctionTool.from_defaults(async_fn=get_company_teams_list),
+        # FunctionTool.from_defaults(async_fn=get_company_teams_list),
         FunctionTool.from_defaults(async_fn=get_list_of_recently_terminated_employees),
         FunctionTool.from_defaults(async_fn=find_employee_by_name),
         FunctionTool.from_defaults(async_fn=find_employee_by_role)
