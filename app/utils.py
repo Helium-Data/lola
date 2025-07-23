@@ -105,8 +105,8 @@ def prepare_tools() -> List[BaseTool] | None:
         FunctionTool.from_defaults(async_fn=query_sage_kb)
     )
 
-    sage_tools = build_sage_api_tools()
-    tools.extend(sage_tools)
+    # sage_tools = build_sage_api_tools()
+    # tools.extend(sage_tools)
 
     return tools
 
