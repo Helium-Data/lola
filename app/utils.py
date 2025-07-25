@@ -101,9 +101,10 @@ def prepare_tools() -> List[BaseTool] | None:
             )
         )
 
-    tools.append(
-        FunctionTool.from_defaults(async_fn=query_sage_kb)
-    )
+    tools.extend([
+        FunctionTool.from_defaults(async_fn=query_sage_kb),
+        FunctionTool.from_defaults(async_fn=get_core_values)
+    ])
 
     # sage_tools = build_sage_api_tools()
     # tools.extend(sage_tools)
@@ -832,6 +833,31 @@ def build_vector_index(documents):
     llama_docs = [Document(text=doc) for doc in documents]
     vector_index = VectorStoreIndex.from_documents(documents=llama_docs)
     return vector_index.as_query_engine(llm=config.LLM)
+
+
+async def get_core_values():
+    """Retrieves the core values of Helium.
+
+    This function returns a dictionary containing the core values
+    of Helium Health, along with descriptions explaining what each value means within
+    the company's context. The descriptions provide insight into how these
+    values are implemented and reflected in the organization's culture and practices.
+
+    :return: A dictionary where keys are the names of the core values (strings)
+             and values are their corresponding descriptions (strings).
+    """
+    return {
+        "Simplicity": ("Simplicity is a key factor in driving the adoption of innovation, and thus, our products "
+                       "are simple and easy to use.\nOur organizational structure is tailored in the same fashion. "
+                       "No one is barricaded by bureaucracy and every staff member is easily accessible "
+                       "and approachable"),
+        "Boldness": "Take smart risks and make tough decisions without excessive agonizing.",
+        "Innovation": ("We take on the biggest challenges with passion and extreme attention to detail. \n"
+                       "You re- conceptualize issues to discover practical solutions to hard problems and "
+                       "challenge prevailing assumptions when warranted and suggest better approaches."),
+        "Camaraderie": ("We want everyone that works at Helium to feel that they are in a place where they "
+                        "are comfortable enough to excel at their jobs and be who they’re meant to be.")
+    }
 
 
 async def query_sage_kb(query: str) -> Union[Response, None]:
