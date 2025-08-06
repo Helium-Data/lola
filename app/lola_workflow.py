@@ -20,7 +20,7 @@ from llama_index.core.workflow import (
 
 from .utils import prepare_tools
 from .config import config
-from .prompts import SYSTEM_HEADER, RELEVANCY_PROMPT_TEMPLATE, QA_SYSTEM_PROMPT
+from .prompts import SYSTEM_HEADER, RELEVANCY_PROMPT_TEMPLATE, QA_SYSTEM_PROMPT, SYSTEM_HEADER_PROMPT
 
 
 class PrepEvent(Event):
@@ -97,8 +97,13 @@ class LolaAgent(Workflow):
         # get chat history
         chat_history = memory.get()
 
-        if len(chat_history) == 1:
-            system_msg = ChatMessage(role="system", content=QA_SYSTEM_PROMPT)
+        has_system_message = False
+        for msg in chat_history:
+            if msg.role == "system":
+                has_system_message = True
+
+        if not has_system_message:
+            system_msg = ChatMessage(role="system", content=SYSTEM_HEADER_PROMPT)
             chat_history.insert(0, system_msg)
             memory.set(chat_history)
 
@@ -225,18 +230,19 @@ class LolaAgent(Workflow):
         """Evaluate relevancy of retrieved documents with the query."""
         chat_history = ev.history
         answer = ev.answer
-        new_chat_history = ""
-        for chat in chat_history[:-1]:
-            if chat.role == MessageRole.USER:
-                role = "user"
-            elif chat.role == MessageRole.TOOL:
-                role = "tool"
-            else:
-                role = "assistant"
-            new_chat_history += f"\n'{role}': {chat.content.strip()}"
 
-        response = await self.response_pipeline.arun(conversation=new_chat_history, answer=answer)
-        response_message = str(response.message)
+        # new_chat_history = ""
+        # for chat in chat_history[:-1]:
+        #     if chat.role == MessageRole.USER:
+        #         role = "user"
+        #     elif chat.role == MessageRole.TOOL:
+        #         role = "tool"
+        #     else:
+        #         role = "assistant"
+        #     new_chat_history += f"\n'{role}': {chat.content.strip()}"
+        #
+        # response = await self.response_pipeline.arun(conversation=new_chat_history, answer=answer)
+        response_message = str(answer)
 
         if "warm regards" in response_message.lower():
             string_list = response_message.split("\n")
@@ -247,7 +253,7 @@ class LolaAgent(Workflow):
 
         # save the final response
         memory = await ctx.get("memory")
-        memory.put(response.message)
+        memory.put(response_message)
         await ctx.set("memory", memory)
 
         sources = await ctx.get("sources", default=[])
