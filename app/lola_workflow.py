@@ -18,9 +18,9 @@ from llama_index.core.workflow import (
     step,
 )
 
-from .utils import prepare_tools, remove_thinking_tags
-from .config import config
-from .prompts import SYSTEM_HEADER, RELEVANCY_PROMPT_TEMPLATE, QA_SYSTEM_PROMPT, SYSTEM_HEADER_PROMPT
+from utils import prepare_tools, remove_thinking_tags, clean_content
+from config import config
+from prompts import SYSTEM_HEADER, RELEVANCY_PROMPT_TEMPLATE, QA_SYSTEM_PROMPT, SYSTEM_HEADER_PROMPT
 
 
 class PrepEvent(Event):
@@ -74,6 +74,10 @@ class LolaAgent(Workflow):
         # clear sources
         await ctx.set("sources", [])
 
+        user_name = ev.get("user_name", None)
+        if not user_name:
+            user_name = f"unknown-user-name"
+
         session_id = ev.get("session_id", None)
         if not session_id:
             session_id = f"default-{time.time_ns()}"
@@ -90,9 +94,6 @@ class LolaAgent(Workflow):
         # get user input
         user_input = ev.input
         user_input += "\n (USE at least ONE tool to answer query.)"
-        user_msg = ChatMessage(role="user", content=user_input)
-        memory.put(user_msg)
-        await ctx.set("query_str", user_input)
 
         # get chat history
         chat_history = memory.get()
@@ -107,9 +108,16 @@ class LolaAgent(Workflow):
             chat_history.insert(0, system_msg)
             memory.set(chat_history)
 
+            user_input = f"User's Name: {user_name}\nMessage: " + user_input
+
+        user_msg = ChatMessage(role="user", content=user_input)
+        memory.put(user_msg)
+        await ctx.set("query_str", user_input)
+
         # update context
         await ctx.set("memory", memory)
 
+        chat_history = memory.get()
         return InputEvent(input=chat_history)
 
     @step
@@ -128,22 +136,15 @@ class LolaAgent(Workflow):
             response, error_on_no_tool_call=False
         )
 
+        response_message = response.message
+        response_message.content = clean_content(response_message.content)
+
+        # save the final response, which should have all content
+        memory = await ctx.get("memory")
+        memory.put(response_message)
+        await ctx.set("memory", memory)
+
         if not tool_calls:
-            response_message = response.message
-            if "warm regards" in response_message.content.lower():
-                string_list = response_message.content.split("\n")
-                response_message.content = "\n".join(string_list[:-2])
-
-            if "cakehr" in response_message.content.lower():
-                response_message.content = response_message.content.replace("CakeHR", "SageHR")
-
-            response_message.content = remove_thinking_tags(response_message.content)
-
-            # save the final response, which should have all content
-            memory = await ctx.get("memory")
-            memory.put(response_message)
-            await ctx.set("memory", memory)
-
             sources = await ctx.get("sources", default=[])
             return StopEvent(result={"response": response_message.content, "sources": [*sources]})
         else:
@@ -197,6 +198,12 @@ class LolaAgent(Workflow):
 
         await ctx.set("sources", sources)
 
+        memory = await ctx.get("memory")
+        for msg in tool_msgs:
+            memory.put(msg)
+
+        await ctx.set("memory", memory)
+
         return RelevancyEvent(tool_msgs=tool_msgs)
 
     @step
@@ -207,18 +214,17 @@ class LolaAgent(Workflow):
         tool_msgs = ev.tool_msgs
         query_str = await ctx.get("query_str")
 
-        relevancy_results = []
+        relevancy_msgs = []
         for msg in tool_msgs:
             relevancy = await self.relevancy_pipeline.arun(
                 context_str=msg.content, query_str=query_str
             )
-            relevance_response = f"Tool output: {msg.content} \nRelevancy (Is this document relevant?): {relevancy.message.content.lower().strip()}"
-            msg.content = relevance_response
-            relevancy_results.append(msg)
+            relevance_response = f"Tool output: {msg.content} \nRelevancy: {relevancy.message.content.lower().strip()}"
+            relevancy_msgs.append(ChatMessage(role="assistant", content=relevance_response))
 
         # update memory
         memory = await ctx.get("memory")
-        for msg in relevancy_results:
+        for msg in relevancy_msgs:
             memory.put(msg)
 
         await ctx.set("memory", memory)
@@ -226,43 +232,44 @@ class LolaAgent(Workflow):
         chat_history = memory.get()
         return InputEvent(input=chat_history)
 
-    # @step
-    # async def handle_response(
-    #         self, ctx: Context, ev: ResponseEvent
-    # ) -> StopEvent:
-    #     """Evaluate relevancy of retrieved documents with the query."""
-    #     chat_history = ev.history
-    #     answer = ev.answer
-    #
-    #     # new_chat_history = ""
-    #     # for chat in chat_history[:-1]:
-    #     #     if chat.role == MessageRole.USER:
-    #     #         role = "user"
-    #     #     elif chat.role == MessageRole.TOOL:
-    #     #         role = "tool"
-    #     #     else:
-    #     #         role = "assistant"
-    #     #     new_chat_history += f"\n'{role}': {chat.content.strip()}"
-    #     #
-    #     # response = await self.response_pipeline.arun(conversation=new_chat_history, answer=answer)
-    #     response_message = str(answer)
-    #
-    #     if "warm regards" in response_message.lower():
-    #         string_list = answer.content.split("\n")
-    #         answer.content = "\n".join(string_list[:-2])
-    #
-    #     if "cakehr" in answer.content.lower():
-    #         answer.content = answer.content.replace("CakeHR", "SageHR")
-    #
-    #     answer.content = remove_thinking_tags(answer.content)
-    #
-    #     # save the final response
-    #     memory = await ctx.get("memory")
-    #     memory.put(answer)
-    #     await ctx.set("memory", memory)
-    #
-    #     sources = await ctx.get("sources", default=[])
-    #     return StopEvent(result={"response": answer.content, "sources": [*sources]})
+
+# @step
+# async def handle_response(
+#         self, ctx: Context, ev: ResponseEvent
+# ) -> StopEvent:
+#     """Evaluate relevancy of retrieved documents with the query."""
+#     chat_history = ev.history
+#     answer = ev.answer
+#
+#     # new_chat_history = ""
+#     # for chat in chat_history[:-1]:
+#     #     if chat.role == MessageRole.USER:
+#     #         role = "user"
+#     #     elif chat.role == MessageRole.TOOL:
+#     #         role = "tool"
+#     #     else:
+#     #         role = "assistant"
+#     #     new_chat_history += f"\n'{role}': {chat.content.strip()}"
+#     #
+#     # response = await self.response_pipeline.arun(conversation=new_chat_history, answer=answer)
+#     response_message = str(answer)
+#
+#     if "warm regards" in response_message.lower():
+#         string_list = answer.content.split("\n")
+#         answer.content = "\n".join(string_list[:-2])
+#
+#     if "cakehr" in answer.content.lower():
+#         answer.content = answer.content.replace("CakeHR", "SageHR")
+#
+#     answer.content = remove_thinking_tags(answer.content)
+#
+#     # save the final response
+#     memory = await ctx.get("memory")
+#     memory.put(answer)
+#     await ctx.set("memory", memory)
+#
+#     sources = await ctx.get("sources", default=[])
+#     return StopEvent(result={"response": answer.content, "sources": [*sources]})
 
 
 def initialize_workflow(visualize_workflow=False) -> LolaAgent:
@@ -272,19 +279,19 @@ def initialize_workflow(visualize_workflow=False) -> LolaAgent:
 
     print("Calling agent...")
     agent = LolaAgent(
-        llm=config.LLM, tools=tools, verbose=True, timeout=1000
+        llm=config.LLM, tools=tools, verbose=True, timeout=None
     )
     if visualize_workflow:
         draw_all_possible_flows(LolaAgent, filename="lola_workflow.html")
     return agent
 
 
-async def run_agent(text, session_id=None):
+async def run_agent(text, session_id=None, user_name=None):
     agent = initialize_workflow()
 
     start_time = time.time()
     print(f"Running agent at: {start_time}")
-    response = await agent.run(input=text, session_id=session_id)
+    response = await agent.run(input=text, session_id=session_id, user_name=user_name)
     end_time = time.time()
     print(f"Completed run at: {end_time} for {end_time - start_time}")
 
@@ -300,5 +307,7 @@ if __name__ == '__main__':
                         type=str)
     parser.add_argument("--session_id", help="Insert session ID",
                         type=str)
+    parser.add_argument("--user_name", help="Insert User's name",
+                        type=str)
     args = parser.parse_args()
-    asyncio.run(run_agent(str(args.query), str(args.session_id)))
+    asyncio.run(run_agent(str(args.query), str(args.session_id), str(args.user_name)))

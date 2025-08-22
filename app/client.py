@@ -29,8 +29,8 @@ handler = AsyncSlackRequestHandler(app)
 fast_app = FastAPI()
 
 
-async def answer_question(query, thread_ts):
-    response = await AGENT.run(input=query, session_id=thread_ts)
+async def answer_question(query, thread_ts, user_name=None):
+    response = await AGENT.run(input=query, session_id=thread_ts, user_name=user_name)
 
     response_text = str(response["response"])
     response_text = await clean_response(response_text, None)
@@ -62,7 +62,7 @@ async def handle_messages(message, say):
                                     channel = message.get("channel", None)
                                     user = await get_user_name(message.get('user'), app)
                                     thread_ts = f"{channel}-{user[0]}"
-                                    response_text = answer_question(query, thread_ts)
+                                    response_text = answer_question(query, thread_ts, user[0])
                                     say(
                                         response_text,
                                         channel=channel,
@@ -76,7 +76,8 @@ async def handle_messages(message, say):
         thread_ts = message.get("thread_ts")
         if message.get('parent_user_id') == BOT_APP_ID:
             query = message.get('text')
-            response = answer_question(query, thread_ts)
+            user = await get_user_name(message.get('user'), app)
+            response = answer_question(query, thread_ts, user[0])
             await app.client.chat_postMessage(
                 channel=message.get('channel'),
                 text=str(response),

@@ -29,8 +29,8 @@ from llama_index.core.indices.vector_store.retrievers.retriever import VectorInd
 from llama_index.core.vector_stores import ExactMatchFilter, FilterCondition, MetadataFilters
 
 import gspread
-from .config import config
-from .prompts import (
+from config import config
+from prompts import (
     DOC_AGENT_SYSTEM_PROMPT, DOC_SUMMARY_PROMPT, MAIN_QUERY_ENGINE_DESCRIPTION,
     CUSTOM_SUB_QUESTION_PROMPT_TMPL, FAQ_QUERY_ENGINE_DESCRIPTION
 )
@@ -916,6 +916,21 @@ def remove_thinking_tags(text: str) -> str:
     Works even if there are multiple occurrences or multiline content inside the tags.
     """
     return re.sub(r"<thinking>.*?</thinking>", "", text, flags=re.DOTALL).strip()
+
+
+def clean_content(content: str) -> str:
+    if "warm regards" in content.lower():
+        string_list = content.split("\n")
+        content = "\n".join(string_list[:-2])
+
+    if "cakehr" in content.lower():
+        content = content.replace("CakeHR", "SageHR")
+
+    if "**response:**" in content:
+        content = content.replace("**response:**", "")
+
+    content = remove_thinking_tags(content.strip())
+    return content
 
 
 if __name__ == '__main__':

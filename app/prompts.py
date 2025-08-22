@@ -231,8 +231,7 @@ Focus on:
 
 ## Response Format:
 Return your answer using one of the following values: `yes`, `no`, or `more`.
-
-Also include a **brief explanation** for your decision.
+Also include a brief explanation for your decision.
 """
 )
 DOC_SUMMARY_PROMPT = """
