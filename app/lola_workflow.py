@@ -18,9 +18,9 @@ from llama_index.core.workflow import (
     step,
 )
 
-from utils import prepare_tools, remove_thinking_tags, clean_content
-from config import config
-from prompts import SYSTEM_HEADER, RELEVANCY_PROMPT_TEMPLATE, QA_SYSTEM_PROMPT, SYSTEM_HEADER_PROMPT
+from .utils import prepare_tools, remove_thinking_tags, clean_content
+from .config import config
+from .prompts import SYSTEM_HEADER, RELEVANCY_PROMPT_TEMPLATE, QA_SYSTEM_PROMPT, SYSTEM_HEADER_PROMPT
 
 
 class PrepEvent(Event):
