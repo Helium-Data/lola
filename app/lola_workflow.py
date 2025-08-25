@@ -137,7 +137,6 @@ class LolaAgent(Workflow):
         )
 
         response_message = response.message
-        response_message.content = clean_content(response_message.content)
 
         # save the final response, which should have all content
         memory = await ctx.get("memory")
@@ -146,6 +145,7 @@ class LolaAgent(Workflow):
 
         if not tool_calls:
             sources = await ctx.get("sources", default=[])
+            response_message.content = clean_content(response_message.content)
             return StopEvent(result={"response": response_message.content, "sources": [*sources]})
         else:
             return ToolCallEvent(tool_calls=tool_calls)
