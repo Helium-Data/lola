@@ -6,6 +6,7 @@ FROM python:3.12-slim
 # FROM python:3.12-alpine
 # Install dependencies
 # RUN apk add --no-cache g++ gcc musl-dev libffi-dev openssl-dev
+RUN apt-get update && apt-get install build-essential -y
 
 # Set the working directory to /app
 WORKDIR /app

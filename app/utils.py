@@ -1,6 +1,6 @@
 import json
 import asyncio
-
+import re
 import pandas as pd
 import nest_asyncio
 import requests
@@ -29,8 +29,8 @@ from llama_index.core.indices.vector_store.retrievers.retriever import VectorInd
 from llama_index.core.vector_stores import ExactMatchFilter, FilterCondition, MetadataFilters
 
 import gspread
-from .config import config
-from .prompts import (
+from config import config
+from prompts import (
     DOC_AGENT_SYSTEM_PROMPT, DOC_SUMMARY_PROMPT, MAIN_QUERY_ENGINE_DESCRIPTION,
     CUSTOM_SUB_QUESTION_PROMPT_TMPL, FAQ_QUERY_ENGINE_DESCRIPTION
 )
@@ -51,8 +51,11 @@ def prepare_tools() -> List[BaseTool] | None:
     indices = load_indices_from_storage(
         storage_context=config.STORAGE_CONTEXT
     )
-    indices_index_ids = [ind.index_id for ind in indices]
-    print(f"{len(indices)}: {indices_index_ids}")
+    indices_index_ids = [ind.index_id for ind in indices if
+                         "summary" in ind.index_id and "faq" not in ind.index_id.lower()]
+    indices_faq_index_ids = [ind.index_id for ind in indices if
+                             "summary" in ind.index_id and "faq" in ind.index_id.lower()]
+    print(f"{len(indices)}: {indices_index_ids}, {indices_faq_index_ids}")
 
     try:
         doc_vec_index = load_index_from_storage(
@@ -67,7 +70,9 @@ def prepare_tools() -> List[BaseTool] | None:
 
     new_indices = get_doc_vector_indices(
         doc_vec_index=doc_vec_index,
-        indices_index_ids=indices_index_ids
+        faq_vec_index=faq_doc_vec_index,
+        indices_index_ids=indices_index_ids,
+        faq_indices_index_ids=indices_faq_index_ids
     )
     print(f"{len(new_indices)}: {new_indices}")
 
@@ -112,19 +117,32 @@ def prepare_tools() -> List[BaseTool] | None:
     return tools
 
 
-def get_doc_vector_indices(doc_vec_index, indices_index_ids):
+def get_doc_vector_indices(
+        doc_vec_index: Union[VectorStoreIndex | None],
+        faq_vec_index: Union[VectorStoreIndex | None],
+        indices_index_ids: List[str],
+        faq_indices_index_ids: List[str],
+):
     if doc_vec_index is None:
         return []
 
-    structs_node_ids = list(doc_vec_index.index_struct.to_dict()["nodes_dict"].keys())
+    structs_node_ids = list(doc_vec_index.index_struct.to_dict()["nodes_dict"].values())
+    faq_structs_node_ids = list(faq_vec_index.index_struct.to_dict()["nodes_dict"].values())
 
     struct_docs = []
     for ids in structs_node_ids:
         try:
-            struct_id = config.DOC_STORE.get_node(ids, raise_error=False)
+            struct_id = doc_vec_index.docstore.get_node(ids, raise_error=False)
             struct_docs.append(struct_id)
         except ValueError:
             print(f"Struct ID error: {ids}")
+
+    for ids in faq_structs_node_ids:
+        try:
+            faq_id = faq_vec_index.docstore.get_node(ids, raise_error=False)
+            struct_docs.append(faq_id)
+        except ValueError:
+            print(f"Faq ID error: {ids}")
 
     doc_vec_index_ids = [
         doc.to_dict()["index_id"].split("_")[0]
@@ -133,10 +151,7 @@ def get_doc_vector_indices(doc_vec_index, indices_index_ids):
 
     new_indices = []
     for idx in indices_index_ids:
-        if idx in ["doc_agent_vector_store", "For_LolaHR_-_FAQs_Document_summary_index"]:
-            continue
-
-        if idx.split("_")[0] not in doc_vec_index_ids:
+        if idx.split("_")[0] not in doc_vec_index_ids + faq_indices_index_ids:
             new_indices.append(idx)
 
     return new_indices
@@ -893,6 +908,29 @@ async def query_sage_kb(query: str) -> Union[Response, None]:
 
     query_engine = build_vector_index(documents=documents)
     return await query_engine.aquery(query)
+
+
+def remove_thinking_tags(text: str) -> str:
+    """
+    Removes all <thinking>...</thinking> blocks (including tags) from the given text.
+    Works even if there are multiple occurrences or multiline content inside the tags.
+    """
+    return re.sub(r"<thinking>.*?</thinking>", "", text, flags=re.DOTALL).strip()
+
+
+def clean_content(content: str) -> str:
+    if "warm regards" in content.lower():
+        string_list = content.split("\n")
+        content = "\n".join(string_list[:-2])
+
+    if "cakehr" in content.lower():
+        content = content.replace("CakeHR", "SageHR")
+
+    if "**response:**" in content:
+        content = content.replace("**response:**", "")
+
+    content = remove_thinking_tags(content.strip())
+    return content
 
 
 if __name__ == '__main__':

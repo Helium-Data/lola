@@ -29,7 +29,7 @@ Visit the confluence [page](https://heliumhealth.atlassian.net/wiki/spaces/HDP/p
 3. Run the application:
    -  Lola workflow
       ```bash
-       python app/lola_workflow.py "What are the eligibility criteria for transport allowance?"
+      python app/lola_workflow.py --query "Hello" --session_id "session-123"
       ```
    - Ingestion pipeline
      ```bash
