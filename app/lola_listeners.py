@@ -70,7 +70,9 @@ class LolaSlackListener:
         await set_title(query)
         await set_status("Thinking...")
 
-        response = await self.agent.run(input=query, session_id=thread_ts)
+        user_info = await client.users_info(user=payload["user"])
+        user_name = user_info['user']['name']
+        response = await self.agent.run(input=query, session_id=thread_ts, user_name=user_name)
 
         response_text = str(response["response"])
         response_text = await clean_response(response_text, set_status)
