@@ -933,7 +933,10 @@ def clean_content(content: str) -> str:
         content = content.replace("assistant:", "")
 
     content = remove_thinking_tags(content.strip())
-    return content
+
+    content = content.replace("**", "*")
+    content = content.replace("Best,\nLola", "")
+    return content.strip()
 
 
 if __name__ == '__main__':
