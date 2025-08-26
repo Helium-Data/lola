@@ -929,6 +929,9 @@ def clean_content(content: str) -> str:
     if "**response:**" in content:
         content = content.replace("**response:**", "")
 
+    if "assistant:" in content:
+        content = content.replace("assistant:", "")
+
     content = remove_thinking_tags(content.strip())
     return content
 
