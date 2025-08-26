@@ -145,9 +145,9 @@ class LolaAgent(Workflow):
 
         if not tool_calls:
             sources = await ctx.get("sources", default=[])
-            print(response_message)
-            response_message.content = clean_content(response_message.content)
-            return StopEvent(result={"response": response_message.content, "sources": [*sources]})
+            clean_content_ = clean_content(str(response_message))
+            print(clean_content_)
+            return StopEvent(result={"response": clean_content_, "sources": [*sources]})
         else:
             return ToolCallEvent(tool_calls=tool_calls)
 
