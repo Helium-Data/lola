@@ -146,7 +146,6 @@ class LolaAgent(Workflow):
         if not tool_calls:
             sources = await ctx.get("sources", default=[])
             clean_content_ = clean_content(str(response_message))
-            print(clean_content_)
             return StopEvent(result={"response": clean_content_, "sources": [*sources]})
         else:
             return ToolCallEvent(tool_calls=tool_calls)
@@ -199,12 +198,6 @@ class LolaAgent(Workflow):
 
         await ctx.set("sources", sources)
 
-        memory = await ctx.get("memory")
-        for msg in tool_msgs:
-            memory.put(msg)
-
-        await ctx.set("memory", memory)
-
         return RelevancyEvent(tool_msgs=tool_msgs)
 
     @step
@@ -221,56 +214,17 @@ class LolaAgent(Workflow):
                 context_str=msg.content, query_str=query_str
             )
             relevance_response = f"Tool output: {msg.content} \nRelevancy: {relevancy.message.content.lower().strip()}"
-            relevancy_msgs.append(ChatMessage(role="assistant", content=relevance_response))
+            msg.blocks[0].text = relevance_response
 
         # update memory
         memory = await ctx.get("memory")
-        for msg in relevancy_msgs:
+        for msg in tool_msgs:
             memory.put(msg)
 
         await ctx.set("memory", memory)
 
         chat_history = memory.get()
         return InputEvent(input=chat_history)
-
-
-# @step
-# async def handle_response(
-#         self, ctx: Context, ev: ResponseEvent
-# ) -> StopEvent:
-#     """Evaluate relevancy of retrieved documents with the query."""
-#     chat_history = ev.history
-#     answer = ev.answer
-#
-#     # new_chat_history = ""
-#     # for chat in chat_history[:-1]:
-#     #     if chat.role == MessageRole.USER:
-#     #         role = "user"
-#     #     elif chat.role == MessageRole.TOOL:
-#     #         role = "tool"
-#     #     else:
-#     #         role = "assistant"
-#     #     new_chat_history += f"\n'{role}': {chat.content.strip()}"
-#     #
-#     # response = await self.response_pipeline.arun(conversation=new_chat_history, answer=answer)
-#     response_message = str(answer)
-#
-#     if "warm regards" in response_message.lower():
-#         string_list = answer.content.split("\n")
-#         answer.content = "\n".join(string_list[:-2])
-#
-#     if "cakehr" in answer.content.lower():
-#         answer.content = answer.content.replace("CakeHR", "SageHR")
-#
-#     answer.content = remove_thinking_tags(answer.content)
-#
-#     # save the final response
-#     memory = await ctx.get("memory")
-#     memory.put(answer)
-#     await ctx.set("memory", memory)
-#
-#     sources = await ctx.get("sources", default=[])
-#     return StopEvent(result={"response": answer.content, "sources": [*sources]})
 
 
 def initialize_workflow(visualize_workflow=False) -> LolaAgent:
