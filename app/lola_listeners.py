@@ -77,8 +77,9 @@ class LolaSlackListener:
 
         response = await self.agent.run(input=query, session_id=thread_ts, user_name=user_name)
 
+        await set_status("Typing...")
         response_text = str(response["response"])
-        response_text = await clean_response(response_text, set_status)
+        # response_text = await clean_response(response_text, set_status)
 
         await set_status("Still typing...")
         await say(
