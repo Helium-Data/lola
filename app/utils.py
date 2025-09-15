@@ -46,7 +46,7 @@ EMPLOYEE_DIRECTORY: Union[pd.DataFrame | None] = None
 EMPLOYEE_DIRECTORY_PATH = "1XnoZnA2jKP_pnEuq8OIbDYM06GLO58DE"
 
 
-def prepare_tools() -> List[BaseTool] | None:
+def prepare_tools(override=True) -> List[BaseTool] | None:
     """
     Function to convert indexes to tools (vector, summary), also create new functions that the AI agent can reference to extract information.
     :return: a list of tools for the LLM agent to use
@@ -87,7 +87,7 @@ def prepare_tools() -> List[BaseTool] | None:
     print(f"{len(new_indices)}: {new_indices}")
 
     if indices:
-        if doc_vec_index is None or len(new_indices) > 0:
+        if doc_vec_index is None or len(new_indices) > 0 or override:
             # Build tools
             agents, summary = build_document_agents(indices)
             obj_qe, faq_obj_qe = build_agent_objects(agents)
