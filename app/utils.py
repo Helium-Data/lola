@@ -1,6 +1,7 @@
 import json
 import asyncio
 import re
+import io
 import pandas as pd
 import nest_asyncio
 import requests
@@ -29,21 +30,30 @@ from llama_index.core.indices.vector_store.retrievers.retriever import VectorInd
 from llama_index.core.vector_stores import ExactMatchFilter, FilterCondition, MetadataFilters
 
 import gspread
-from .config import config
-from .prompts import (
+from config import config
+from prompts import (
     DOC_AGENT_SYSTEM_PROMPT, DOC_SUMMARY_PROMPT, MAIN_QUERY_ENGINE_DESCRIPTION,
     CUSTOM_SUB_QUESTION_PROMPT_TMPL, FAQ_QUERY_ENGINE_DESCRIPTION
 )
+import google.auth
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
+from googleapiclient.http import MediaIoBaseDownload
 
 nest_asyncio.apply()
 SAGE_BASE_URL = "https://heliumhealthnigeria.sage.hr/api/"
+EMPLOYEE_DIRECTORY: Union[pd.DataFrame | None] = None
+EMPLOYEE_DIRECTORY_PATH = "1XnoZnA2jKP_pnEuq8OIbDYM06GLO58DE"
 
 
-def prepare_tools() -> List[BaseTool] | None:
+def prepare_tools(override=True) -> List[BaseTool] | None:
     """
     Function to convert indexes to tools (vector, summary), also create new functions that the AI agent can reference to extract information.
     :return: a list of tools for the LLM agent to use
     """
+    global EMPLOYEE_DIRECTORY
+
+    EMPLOYEE_DIRECTORY = download_excel_from_drive(EMPLOYEE_DIRECTORY_PATH)
     print("Preparing tools...")
     tools: List[BaseTool] = []
 
@@ -77,7 +87,7 @@ def prepare_tools() -> List[BaseTool] | None:
     print(f"{len(new_indices)}: {new_indices}")
 
     if indices:
-        if doc_vec_index is None or len(new_indices) > 0:
+        if doc_vec_index is None or len(new_indices) > 0 or override:
             # Build tools
             agents, summary = build_document_agents(indices)
             obj_qe, faq_obj_qe = build_agent_objects(agents)
@@ -108,7 +118,8 @@ def prepare_tools() -> List[BaseTool] | None:
 
     tools.extend([
         FunctionTool.from_defaults(async_fn=query_sage_kb),
-        FunctionTool.from_defaults(async_fn=get_core_values)
+        FunctionTool.from_defaults(async_fn=get_core_values),
+        FunctionTool.from_defaults(fn=search_employee_directory)
     ])
 
     # sage_tools = build_sage_api_tools()
@@ -703,6 +714,100 @@ def get_glossary_sheet(sheet_key, worksheet: Union[int, str] = 0) -> pd.DataFram
     )
 
 
+def download_excel_from_drive(file_id: str) -> pd.DataFrame:
+    """Download an Excel file from Google Drive and return as DataFrame."""
+    creds, _ = google.auth.load_credentials_from_dict(info=config.G_CREDENTIALS)
+
+    try:
+        # Create Drive API client
+        service = build("drive", "v3", credentials=creds)
+
+        # Download file as bytes
+        request = service.files().get_media(fileId=file_id)
+        file_bytes = io.BytesIO()
+        downloader = MediaIoBaseDownload(file_bytes, request)
+
+        done = False
+        while not done:
+            status, done = downloader.next_chunk()
+            if status:
+                print(f"Download {int(status.progress() * 100)}%.")
+
+        # Reset pointer before reading
+        file_bytes.seek(0)
+
+        # Load into pandas
+        df = pd.read_excel(file_bytes)
+        df.columns = ['S/N', 'First name', 'Last name', 'Work email', 'Entity',
+       'Department', 'Team', 'Job Title', 'Line Manager Position',
+       'Line Manager Name', 'Gender', 'Nationality', 'Location', 'Country']
+        return df
+
+    except HttpError as error:
+        print(f"An error occurred: {error}")
+        return None
+
+
+def search_employee_directory(
+        first_name: str = None,
+        last_name: str = None,
+        work_email: str = None,
+        entity: str = None,
+        department: str = None,
+        team: str = None,
+        job_title: str = None,
+        line_manager_position: str = None,
+        line_manager_name: str = None,
+        gender: str = None,
+        nationality: str = None,
+        location: str = None,
+        country: str = None,
+        threshold: int = 70
+) -> List[Dict[str, Any]]:
+    """
+    Search an employee dataframe with flexible partial and fuzzy matching.
+
+    Parameters:
+        Employee directory with the following columns (parameters):
+            ['First name', 'Last name', 'Work email', 'Entity', 'Department', 'Team',
+             'Job Title', 'Line Manager Position', 'Line Manager Name', 'Gender',
+             'Nationality', 'Location', 'Country']
+        Each additional parameter is an optional search filter (string).
+        threshold (int): Minimum similarity score (0-100) for fuzzy matching.
+
+    Returns:
+        pd.DataFrame: Filtered employee records that match the criteria.
+    """
+    df_filtered = EMPLOYEE_DIRECTORY.copy().fillna("").astype(str)
+
+    # Filters mapping
+    filters = {
+        "First name": first_name,
+        "Last name": last_name,
+        "Work email": work_email,
+        "Entity": entity,
+        "Department": department,
+        "Team": team,
+        "Job Title": job_title,
+        "Line Manager Position": line_manager_position,
+        "Line Manager Name": line_manager_name,
+        "Gender": gender,
+        "Nationality": nationality,
+        "Location": location,
+        "Country": country,
+    }
+
+    for col, val in filters.items():
+        if val:  # apply only if user passed something
+            df_filtered = df_filtered[
+                df_filtered[col].apply(
+                    lambda x: fuzz.partial_ratio(str(val).lower(), x.lower()) >= threshold
+                )
+            ]
+
+    return df_filtered.reset_index(drop=True).to_dict("records")
+
+
 def load_glossary(glossary_dict: Dict[str, str]) -> Dict[str, List[Dict[str, str]]]:
     """
     Convert extracted glossary spreadsheet into a python dictionary for easy lookup
@@ -940,5 +1045,11 @@ def clean_content(content: str) -> str:
 
 
 if __name__ == '__main__':
-    resp = asyncio.run(query_sage_kb("sagehr"))
-    print(resp)
+    # resp = asyncio.run(query_sage_kb("sagehr"))
+    # print(resp)
+
+    resp = download_excel_from_drive(EMPLOYEE_DIRECTORY_PATH)
+    print(resp.columns)
+    EMPLOYEE_DIRECTORY = resp
+
+    print(search_employee_directory(first_name="osasu"))

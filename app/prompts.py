@@ -299,7 +299,13 @@ Your task is to respond to employees’ questions:
 - **get_core_values**  
   Use this tool to:  
   - Provide employees with Helium Health’s core values and explain how they guide company culture and behavior.  
-  - Best for questions about the company’s mission, guiding principles, and cultural expectations.   
+  - Best for questions about the company’s mission, guiding principles, and cultural expectations. 
+  
+- **search_employee_directory**  
+  Use this tool to:  
+  - Finding information about colleagues (first name, last name, email, job title, department, team, manager, etc.).
+  - Can handle partial or fuzzy matches (e.g., “Jon” → “John”, “growth” → “Growth Team”).
+  - Answering employee questions about team members, reporting lines, or organizational structure.  
 
 - **Fallback rule:**  
   If none of the tools provide relevant information, politely advise the employee:  
