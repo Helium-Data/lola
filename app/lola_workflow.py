@@ -58,7 +58,7 @@ class LolaAgent(Workflow):
     ) -> None:
         super().__init__(*args, **kwargs)
         self.tools = tools or []
-        self.memory_token_limit = 3000
+        self.memory_token_limit = 35000
 
         self.llm = llm
         self.chat_llm = llm
