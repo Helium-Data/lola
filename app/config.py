@@ -14,7 +14,7 @@ from redisvl.schema import IndexSchema
 from llama_index.core.storage import StorageContext
 from llama_index.core import Settings
 from llama_index.core.ingestion import IngestionCache
-
+from phoenix.otel import register
 from opentelemetry.sdk import trace as trace_sdk
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
@@ -30,11 +30,15 @@ span_phoenix_processor = SimpleSpanProcessor(
     HTTPSpanExporter(endpoint=os.environ.get("PHOENIX_ENDPOINT"))
 )
 
-# Add them to the tracer
-tracer_provider = trace_sdk.TracerProvider()
-tracer_provider.add_span_processor(span_processor=span_phoenix_processor)
-
 # Instrument the application
+os.environ["PHOENIX_API_KEY"] = os.environ.get("PHOENIX_CLIENT_HEADERS", "").split("=")[1]
+os.environ["PHOENIX_COLLECTOR_ENDPOINT"] = os.environ.get("PHOENIX_ENDPOINT")
+os.environ["PHOENIX_CLIENT_HEADERS"] = os.environ.get("PHOENIX_CLIENT_HEADERS")
+
+tracer_provider = register(
+    project_name="lola-hr",
+)
+tracer_provider.add_span_processor(span_processor=span_phoenix_processor)
 LlamaIndexInstrumentor().instrument(tracer_provider=tracer_provider)
 
 
