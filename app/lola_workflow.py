@@ -10,6 +10,8 @@ from llama_index.utils.workflow import draw_all_possible_flows
 from llama_index.core.query_pipeline import QueryPipeline
 from llama_index.core.memory import ChatMemoryBuffer
 from llama_index.core.tools.types import BaseTool, AsyncBaseTool
+from llama_index.agent.lats import LATSAgentWorker
+from llama_index.core.agent import AgentRunner
 from llama_index.core.workflow import (
     Context,
     Workflow,
@@ -18,9 +20,9 @@ from llama_index.core.workflow import (
     step,
 )
 
-from .utils import prepare_tools, remove_thinking_tags, clean_content
-from .config import config
-from .prompts import SYSTEM_HEADER, RELEVANCY_PROMPT_TEMPLATE, QA_SYSTEM_PROMPT, SYSTEM_HEADER_PROMPT
+from utils import prepare_tools, remove_thinking_tags, clean_content
+from config import config
+from prompts import SYSTEM_HEADER, RELEVANCY_PROMPT_TEMPLATE, QA_SYSTEM_PROMPT, SYSTEM_HEADER_PROMPT
 
 
 class PrepEvent(Event):
@@ -46,6 +48,28 @@ class ToolCallEvent(Event):
 
 class FunctionOutputEvent(Event):
     output: ToolOutput
+
+
+def get_memory(session_id, llm, memory_token_limit):
+    memory = ChatMemoryBuffer.from_defaults(
+        llm=llm,
+        token_limit=memory_token_limit,
+        chat_store=config.CHAT_STORE,
+        chat_store_key=session_id,
+    )
+    chat_history = memory.get()
+
+    has_system_message = False
+    for msg in chat_history:
+        if msg.role == "system":
+            has_system_message = True
+
+    if not has_system_message:
+        system_msg = ChatMessage(role="system", content=SYSTEM_HEADER_PROMPT)
+        chat_history.insert(0, system_msg)
+        memory.set(chat_history)
+
+    return memory
 
 
 class LolaAgent(Workflow):
@@ -227,31 +251,50 @@ class LolaAgent(Workflow):
         return InputEvent(input=chat_history)
 
 
-def initialize_workflow(visualize_workflow=False) -> LolaAgent:
+def initialize_workflow(session_id, visualize_workflow=False) -> LolaAgent:
     print("Initializing workflow...")
     print("Loading indexes...")
     tools = prepare_tools()
 
     print("Calling agent...")
-    agent = LolaAgent(
-        llm=config.LLM, tools=tools, verbose=True, timeout=None
+    llm = config.LLM
+    # llm.system_prompt = SYSTEM_HEADER_PROMPT
+    agent_worker = LATSAgentWorker.from_tools(
+        tools=tools,
+        llm=llm,
+        num_expansions=2,
+        max_rollouts=3,  # using -1 for unlimited rollouts
+        verbose=True,
+        timeout=None,
     )
+    agent = AgentRunner(
+        agent_worker=agent_worker,
+        memory=get_memory(
+            session_id=session_id,
+            llm=llm,
+            memory_token_limit=35000
+        ),
+        llm=llm,
+    )
+    # agent = LolaAgent(
+    #     llm=config.LLM, tools=tools, verbose=True, timeout=None
+    # )
     if visualize_workflow:
         draw_all_possible_flows(LolaAgent, filename="lola_workflow.html")
     return agent
 
 
 async def run_agent(text, session_id=None, user_name=None):
-    agent = initialize_workflow()
+    agent = initialize_workflow(session_id)
 
     start_time = time.time()
     print(f"Running agent at: {start_time}")
-    response = await agent.run(input=text, session_id=session_id, user_name=user_name)
+    response = await agent.achat(message=f"Username: {user_name}, text: {text}")
     end_time = time.time()
     print(f"Completed run at: {end_time} for {end_time - start_time}")
 
     # print("Sources: ", response["sources"])
-    print("Response: ", response["response"])
+    print("Response: ", response)
 
 
 if __name__ == '__main__':
