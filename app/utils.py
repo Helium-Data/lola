@@ -46,7 +46,7 @@ EMPLOYEE_DIRECTORY: Union[pd.DataFrame | None] = None
 EMPLOYEE_DIRECTORY_PATH = "1XnoZnA2jKP_pnEuq8OIbDYM06GLO58DE"
 
 
-def prepare_tools(override=False) -> List[BaseTool] | None:
+def prepare_tools(override=True) -> List[BaseTool] | None:
     """
     Function to convert indexes to tools (vector, summary), also create new functions that the AI agent can reference to extract information.
     :return: a list of tools for the LLM agent to use
