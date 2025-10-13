@@ -18,7 +18,7 @@ from llama_index.core import (
 from pydantic import ValidationError
 from bs4 import BeautifulSoup
 from llama_index.core.schema import IndexNode
-from llama_index.core.agent import FunctionCallingAgent
+from llama_index.core.agent import FunctionCallingAgent, ReActAgent
 from llama_index.core.indices.base import BaseIndex
 from llama_index.core.query_engine import RouterQueryEngine
 from llama_index.core.node_parser import SemanticSplitterNodeParser
@@ -563,7 +563,7 @@ def build_single_agent(index: BaseIndex, fname=None, return_agent=True) -> Union
 
     if return_agent:
         # build agent
-        agent = FunctionCallingAgent.from_tools(
+        agent = ReActAgent.from_tools(
             query_engine_tools,
             llm=config.LLM,
             verbose=True,
